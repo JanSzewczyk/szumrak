@@ -1,0 +1,9 @@
+node_modules/
+dist/
+*.log
+agent-run.jsonl
+.env
+.env.*
+!.env.example
+.DS_Store
+.idea/

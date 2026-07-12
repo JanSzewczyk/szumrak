@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Read",
+      "Edit",
+      "Grep",
+      "Glob",
+      "Bash(npm run test:*)",
+      "Bash(npm run typecheck)",
+      "Bash(npm run lint)"
+    ],
+    "deny": [
+      "Read(.env*)",
+      "Edit(.env*)",
+      "Edit(middleware.ts)",
+      "Edit(**/clerk*)",
+      "Bash(git push --force*)",
+      "Bash(rm -rf*)"
+    ]
+  }
+}
