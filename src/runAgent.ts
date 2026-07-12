@@ -14,10 +14,10 @@ export interface AgentRunResult {
   totalCostUsd?: number;
 }
 
-// Agent edytuje pliki przez wbudowane narzędzia SDK (Read/Edit/Grep/Glob/Skill).
-// Commit/push/PR wykonuje osobno git.ts po zakończeniu runu — agent nigdy sam
-// nie wywołuje `git push`/`gh pr create`, więc permissionMode "acceptEdits"
-// (auto-akceptacja edycji plików) wystarcza bez rozszerzania o Bash.
+// The agent edits files through the SDK's built-in tools (Read/Edit/Grep/Glob).
+// Commit/push/PR happens separately in git.ts after the run finishes — the agent
+// never runs `git push`/`gh pr create` itself, so permissionMode "acceptEdits"
+// (auto-accept file edits) is enough without opening up Bash.
 export async function runAgent(task: string): Promise<AgentRunResult> {
   const toolCalls: AgentToolCall[] = [];
   let finalMessage = "";
@@ -33,7 +33,6 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
       cwd: config.workspacePath,
       permissionMode: "acceptEdits",
       maxTurns: config.maxTurns,
-      skills: "all",
     },
   });
 

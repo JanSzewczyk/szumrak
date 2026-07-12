@@ -3,21 +3,20 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Autonomiczny agent do wykonywania wąskich, wysoko-weryfikowalnych zadań na repozytoriach docelowych.",
+  "description": "Autonomous agent for performing narrow, highly verifiable tasks on target repositories.",
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "node --loader ts-node/esm src/index.ts",
     "dev:build": "npm run build && docker build -t szumrak -f docker/Dockerfile .",
     "dev:run": "docker run --rm -e ANTHROPIC_API_KEY -e GH_TOKEN -e TASK -e REPO -e DRY_RUN=true -v $CRAFTFLOW_PATH:/workspace szumrak",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.3.207",
-    "@octokit/rest": "^21.0.0"
+    "@octokit/rest": "^22.0.1"
   },
   "devDependencies": {
-    "typescript": "^5.6.0",
-    "@types/node": "^22.0.0"
+    "@types/node": "^24.13.3",
+    "typescript": "^6.0.3"
   }
 }

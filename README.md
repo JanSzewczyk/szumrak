@@ -1,90 +1,89 @@
 # Szumrak
 
-Autonomiczny agent wykonujący wąskie, wysoko-weryfikowalne zadania na repozytoriach
-docelowych (np. CraftFlow), oparty na Claude Agent SDK. Pełna koncepcja i decyzje
-architektoniczne — patrz dokumentacja Notion, strona "Plan wdrożenia — fazy,
-wymagania, priorytety".
+An autonomous agent that performs narrow, highly verifiable tasks on target
+repositories, built on top of the Claude Agent SDK. For the full concept and
+architectural decisions, see the Notion documentation, page "Rollout plan —
+phases, requirements, priorities".
 
 ## Status
 
-Faza 0–1–2 (szkielet) planu wdrożenia. Silnik uruchamia się lokalnie i w
-kontenerze; integracja CI (Faza 5) i realne skille (Faza 9) — kolejne kroki.
+Skeleton stage of the rollout plan. The engine runs locally and in a container.
+The agent currently runs **without any skills** — CI integration and an optional
+skills layer are later steps.
 
-## Struktura
+## Structure
 
 ```
 szumrak/
 ├── docker/Dockerfile
 ├── src/
 │   ├── index.ts        # entrypoint
-│   ├── runAgent.ts      # wrapper na Claude Agent SDK
-│   ├── validation.ts    # post-hoc check użycia skilli
-│   ├── git.ts            # commit/push/PR
-│   ├── config.ts         # limity, stałe
-│   └── logger.ts         # structured logging do JSONL
-└── target-repo-templates/  # pliki do skopiowania DO repo docelowego
+│   ├── runAgent.ts     # wrapper around the Claude Agent SDK
+│   ├── git.ts          # commit/push/PR
+│   ├── config.ts       # limits, constants
+│   └── logger.ts       # structured logging to JSONL
+└── target-repo-templates/  # files to copy INTO the target repo
     ├── CLAUDE.md
     └── .claude/
-        ├── settings.json
-        └── skills/storybook-testing/SKILL.md
+        └── settings.json
 ```
 
-## Wymagane zmienne środowiskowe
+## Required environment variables
 
-| Zmienna | Wymagana | Opis |
+| Variable | Required | Description |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | tak | klucz do Claude API |
-| `TASK` | tak | treść zadania dla agenta |
-| `WORKSPACE_PATH` | nie (domyślnie `/workspace`) | ścieżka do repo docelowego |
-| `REPO` | tak przy tworzeniu PR | `owner/repo` repozytorium docelowego |
-| `GH_TOKEN` | tak przy tworzeniu PR | PAT z minimalnym scope |
-| `DRY_RUN` | nie | `true` pomija commit/push/PR, zmiany zostają tylko na dysku |
-| `MAX_TURNS` | nie (domyślnie 30) | limit tur agenta |
-| `MAX_DURATION_MS` | nie (domyślnie 900000) | limit czasu runu |
-| `AGENT_LOG_PATH` | nie (domyślnie `/workspace/agent-run.jsonl`) | ścieżka logu JSONL |
+| `ANTHROPIC_API_KEY` | yes | Claude API key |
+| `TASK` | yes | the task for the agent |
+| `WORKSPACE_PATH` | no (default `/workspace`) | path to the target repository |
+| `REPO` | yes when opening a PR | `owner/repo` of the target repository |
+| `GH_TOKEN` | yes when opening a PR | PAT with minimal scope |
+| `DRY_RUN` | no | `true` skips commit/push/PR, changes stay on disk only |
+| `MAX_TURNS` | no (default 30) | agent turn limit |
+| `MAX_DURATION_MS` | no (default 900000) | run duration limit |
+| `AGENT_LOG_PATH` | no (default `<WORKSPACE_PATH>/agent-run.jsonl`) | JSONL log path |
 
-## Testowanie lokalne — trzy poziomy
+## Local testing — three levels
 
-Nie czekaj na GitHub Actions żeby sprawdzić, czy agent poprawnie czyta
-`CLAUDE.md` i skille docelowego repo. Zalecana kolejność pracy:
+Don't wait for GitHub Actions to check whether the agent correctly reads the
+target repo's `CLAUDE.md`. Recommended order of work:
 
-### Poziom 1 — bezpośrednio na hoście (bez Dockera)
+### Level 1 — directly on the host (no Docker)
 
-Najszybsza pętla feedbacku, do debugowania samej logiki agenta.
+The fastest feedback loop, for debugging the agent logic itself.
 
 ```bash
 npm run build
-WORKSPACE_PATH=/ścieżka/do/lokalnego/craftflow \
-TASK="Dodaj testy Storybook do komponentu InvoiceCard" \
+WORKSPACE_PATH=/path/to/local/target-repo \
+TASK="Add a unit test for the formatDate helper" \
 DRY_RUN=true \
 ANTHROPIC_API_KEY=sk-ant-... \
 npm start
 ```
 
-### Poziom 2 — w kontenerze, lokalnie zbudowanym
+### Level 2 — in a locally built container
 
-Waliduje izolację środowiskową (brakujące binarki, ścieżki, uprawnienia).
+Validates environment isolation (missing binaries, paths, permissions).
 
 ```bash
 npm run dev:build
 
-CRAFTFLOW_PATH=/ścieżka/do/lokalnego/craftflow \
-TASK="Dodaj testy Storybook do komponentu InvoiceCard" \
+CRAFTFLOW_PATH=/path/to/local/target-repo \
+TASK="Add a unit test for the formatDate helper" \
 npm run dev:run
 ```
 
-Montowany jest lokalny checkout repo docelowego jako wolumen — zmiany widoczne
-od razu przez `git diff` w tamtym repo. `DRY_RUN=true` jest domyślnie ustawiony
-w skrypcie `dev:run`, więc nie trzeba się martwić o spam PR-ami testowymi.
+The local checkout of the target repo is mounted as a volume — changes are
+visible immediately via `git diff` in that repo. `DRY_RUN=true` is set by default
+in the `dev:run` script, so there is no risk of spamming the repo with test PRs.
 
-### Poziom 3 — pełny cykl w GitHub Actions
+### Level 3 — full cycle in GitHub Actions
 
-Dopiero gdy logika działa w Poziomie 1 i 2 — patrz `.github/workflows/agent.yml`
-w repo docelowym (Faza 5 planu wdrożenia, jeszcze nie zaimplementowana w tym repo).
+Only once the logic works at Level 1 and Level 2 — see `.github/workflows/agent.yml`
+in the target repo (a later rollout phase, not yet implemented in this repo).
 
-## Uwaga o zależności SDK
+## Note on the SDK dependency
 
-`@anthropic-ai/claude-agent-sdk` bywa aktualizowane często. Przed większymi
-zmianami w `src/runAgent.ts` warto zweryfikować aktualny kształt API
-bezpośrednio w `node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts` —
-dokumentacja bywa nieaktualna względem realnie opublikowanej wersji.
+`@anthropic-ai/claude-agent-sdk` is updated frequently. Before making larger
+changes in `src/runAgent.ts`, verify the current API shape directly in
+`node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts` — the online docs can lag
+behind the actually published version.

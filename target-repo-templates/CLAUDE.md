@@ -1,38 +1,37 @@
-# CraftFlow — instrukcje dla agenta
+# Target repo — agent instructions
 
-> Szablon startowy do dostosowania pod rzeczywisty stack i konwencje CraftFlow.
-> Uzupełnij sekcje poniżej realną architekturą repo docelowego przed pierwszym uruchomieniem Szumraka.
+> Starter template to adapt to the real stack and conventions of the target
+> repository. Fill in the sections below with the actual architecture before the
+> first Szumrak run.
 
-## Architektura
+## Architecture
 
-Feature-driven layered architecture. Każda feature w `src/features/<nazwa>/`
-ma własne: components, server-actions, db (Drizzle schema/queries), types.
+Feature-driven layered architecture. Each feature lives in `src/features/<name>/`
+with its own: components, server actions, db layer, and types.
 
-## Gdzie zacząć szukać
+## Where to start looking
 
-- Komponenty UI: `src/features/<nazwa>/components/`
-- Server actions: `src/features/<nazwa>/server/actions/`
-- Zapytania do bazy: `src/features/<nazwa>/server/db/`
-- Kod współdzielony: `src/shared/`
+- UI components: `src/features/<name>/components/`
+- Server actions: `src/features/<name>/server/actions/`
+- Database queries: `src/features/<name>/server/db/`
+- Shared code: `src/shared/`
 
 ## Strict import boundaries
 
-- Feature A NIE może importować bezpośrednio z `features/B/internal/*`
-- Import tylko przez `features/B/index.ts` (public API feature'a)
-- Współdzielony kod → `src/shared/`
+- Feature A MUST NOT import directly from `features/B/internal/*`
+- Import only through `features/B/index.ts` (the feature's public API)
+- Shared code → `src/shared/`
 
 ## Stack
 
-Next.js, React, TypeScript, Drizzle ORM + Supabase, Clerk, Resend.
-Testy: Vitest (unit), Storybook (component), Playwright (e2e).
+Next.js, React, TypeScript. Adjust to the target repo's actual dependencies.
 
-## Konwencje
+## Conventions
 
-- UI strings po polsku
 - Commit messages: semantic-release (feat:/fix:/chore:)
-- Nigdy nie modyfikuj: `.env*`, `middleware.ts`, konfiguracji Clerk
+- Never modify: `.env*`, `middleware.ts`, auth configuration
 
-## Jak weryfikować pracę
+## How to verify your work
 
 ```
 npm run typecheck && npm run lint && npm run test

@@ -5,10 +5,4 @@ export const config = {
   branchPrefix: "agent/",
   protectedBranches: ["main", "master"],
   dryRun: process.env.DRY_RUN === "true",
-  // słowo kluczowe w zadaniu -> skill który MUSI zostać użyty
-  requiredSkillKeywords: {
-    story: "storybook-testing",
-    "testy komponentu": "storybook-testing",
-    "test wizualny": "storybook-testing",
-  } as Record<string, string>,
 };
