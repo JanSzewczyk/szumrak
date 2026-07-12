@@ -48,10 +48,11 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   message stream: assistant tool-use/text blocks live under `message.message.content`; the final
   outcome is a `type: "result"` message where success is `subtype === "success" && !is_error` and
   the summary text is `message.result`. A wall-clock guard throws past `maxDurationMs`.
-- **`git.ts`** does branch → commit → push → `octokit` PR create → add `ai-generated` label. The
-  agent itself never runs git; all git/PR work happens here, in Node, *after* the run.
-- **`config.ts`** centralises env-driven limits/constants. **`logger.ts`** appends JSONL events to
-  `<WORKSPACE_PATH>/agent-run.jsonl` (this file is uploaded as a CI artifact).
+- **`git.ts`** does branch → commit → push → PR create (via the Octokit client from
+  `src/lib/github.ts`) → add `ai-generated` label. The agent itself never runs git; all git/PR
+  work happens here, in Node, *after* the run.
+- **`config.ts`** centralises env-driven limits/constants. **`src/lib/logger.ts`** appends JSONL
+  events to `<WORKSPACE_PATH>/agent-run.jsonl` (this file is uploaded as a CI artifact).
 
 Config is entirely env-var driven: `TASK`, `WORKSPACE_PATH`, `REPO` (`owner/repo`), `GH_TOKEN`,
 `ANTHROPIC_API_KEY`, `DRY_RUN`, `MAX_TURNS`, `MAX_DURATION_MS`, `AGENT_LOG_PATH`. See README table.

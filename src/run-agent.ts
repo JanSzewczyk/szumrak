@@ -32,8 +32,8 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
     options: {
       cwd: config.workspacePath,
       permissionMode: "acceptEdits",
-      maxTurns: config.maxTurns,
-    },
+      maxTurns: config.maxTurns
+    }
   });
 
   for await (const message of stream) {
@@ -62,7 +62,7 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
         subtype: message.subtype,
         isError: message.is_error,
         totalCostUsd: message.total_cost_usd,
-        numTurns: message.num_turns,
+        numTurns: message.num_turns
       });
     }
 

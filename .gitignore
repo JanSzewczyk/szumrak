@@ -8,4 +8,4 @@ agent-run.jsonl
 .DS_Store
 .idea/
 
-!bash.exe.stackdump
+/bash.exe.stackdump

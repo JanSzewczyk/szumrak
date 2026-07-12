@@ -1,41 +1,22 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.0/schema.json",
-  "assist": {
-    "actions": {
-      "source": {
-        "noDuplicateClasses": "on",
-        "organizeImports": "on",
-        "useSortedAttributes": "on",
-        "useSortedInterfaceMembers": "on",
-        "useSortedKeys": "on"
-      }
-    },
-    "enabled": true
-  },
-  "css": {
-    "parser": {
-      "tailwindDirectives": true
-    }
+  "$schema": "https://biomejs.dev/schemas/2.5.3/schema.json",
+  "root": true,
+  "vcs": {
+    "clientKind": "git",
+    "enabled": true,
+    "useIgnoreFile": true
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": [
-      "**",
-      "!**/.next/**",
-      "!**/node_modules/**",
-      "!**/coverage/**",
-      "!**/storybook-static/**",
-      "!**/playwright-report/**",
-      "!**/test-results/**",
-      "!**/dist/**",
-      "!**/.sanity/**",
-      "!**/.vercel/**",
-      "!**/.turbo/**",
-      "!**/public/**",
-      "!**/*.min.{js,css}",
-      "!**/next-env.d.ts",
-      "!**/lib/sanity/schema.json"
-    ]
+    "includes": ["**", "!**/node_modules", "!**/dist"]
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
   },
   "formatter": {
     "enabled": true,
@@ -47,9 +28,7 @@
   "javascript": {
     "formatter": {
       "arrowParentheses": "always",
-      "bracketSameLine": false,
       "bracketSpacing": true,
-      "jsxQuoteStyle": "double",
       "quoteProperties": "asNeeded",
       "quoteStyle": "double",
       "semicolons": "always",
@@ -62,138 +41,28 @@
     }
   },
   "linter": {
-    "domains": {
-      "next": "all",
-      "playwright": "recommended",
-      "react": "recommended",
-      "test": "all",
-      "types": "all"
-    },
     "enabled": true,
     "rules": {
-      "a11y": {
-        "noAccessKey": "warn",
-        "noAriaHiddenOnFocusable": "error",
-        "useAltText": "error",
-        "useAriaPropsForRole": "error",
-        "useButtonType": "error",
-        "useHeadingContent": "error",
-        "useHtmlLang": "error",
-        "useKeyWithClickEvents": "warn",
-        "useKeyWithMouseEvents": "warn",
-        "useValidAnchor": "error",
-        "useValidAriaProps": "error",
-        "useValidAriaRole": "error",
-        "useValidAriaValues": "error"
-      },
+      "recommended": true,
       "complexity": {
-        "noExtraBooleanCast": "error",
         "noUselessCatch": "error",
-        "noUselessConstructor": "error",
-        "noUselessEmptyExport": "error",
-        "noUselessFragments": "warn",
-        "noUselessLabel": "error",
-        "noUselessRename": "error",
-        "noUselessSwitchCase": "error",
-        "noUselessTernary": "error",
-        "noUselessTypeConstraint": "error",
-        "useFlatMap": "warn",
         "useOptionalChain": "warn"
       },
       "correctness": {
-        "noChildrenProp": "error",
-        "noRenderReturnValue": "error",
         "noUnusedImports": "error",
-        "noUnusedVariables": "warn",
-        "noVoidTypeReturn": "error",
-        "useExhaustiveDependencies": "warn",
-        "useHookAtTopLevel": "error",
-        "useJsxKeyInIterable": "warn"
-      },
-      "nursery": {
-        "noFloatingPromises": "error",
-        "noMisusedPromises": "error",
-        "useSortedClasses": {
-          "fix": "safe",
-          "level": "warn",
-          "options": {
-            "attributes": ["class", "className", "ngClass"],
-            "functions": ["classNames", "clsx", "cn"]
-          }
-        }
-      },
-      "preset": "none",
-      "security": {
-        "noBlankTarget": "error",
-        "noDangerouslySetInnerHtmlWithChildren": "error"
+        "noUnusedVariables": "warn"
       },
       "style": {
-        "noNamespace": "error",
         "noParameterAssign": "error",
         "useAsConstAssertion": "error",
-        "useConsistentArrayType": {
-          "level": "error",
-          "options": {
-            "syntax": "generic"
-          }
-        },
-        "useConsistentBuiltinInstantiation": "error",
         "useConst": "error",
-        "useDefaultSwitchClause": "warn",
         "useImportType": "warn",
         "useTemplate": "warn"
       },
       "suspicious": {
-        "noArrayIndexKey": "warn",
-        "noCommentText": "error",
-        "noConsole": "warn",
-        "noDoubleEquals": "error",
-        "noDuplicateJsxProps": "error",
-        "noExplicitAny": "error",
-        "noExtraNonNullAssertion": "error",
-        "noMisleadingInstantiator": "error",
-        "noThenProperty": "error",
-        "noUnsafeDeclarationMerging": "error",
-        "useNamespaceKeyword": "error"
+        "noConsole": "off",
+        "noExplicitAny": "error"
       }
     }
-  },
-  "overrides": [
-    {
-      "includes": ["**/__tests__/**/*", "**/*.test.*", "**/tests/**"],
-      "linter": {
-        "rules": {
-          "suspicious": {
-            "noFocusedTests": "warn"
-          }
-        }
-      }
-    },
-    {
-      "includes": ["**/*.stories.{ts,tsx,js,jsx,mjs,cjs}", "**/*.story.{ts,tsx,js,jsx,mjs,cjs}"],
-      "linter": {
-        "rules": {
-          "correctness": {
-            "useHookAtTopLevel": "off"
-          }
-        }
-      }
-    },
-    {
-      "includes": ["**/__mocks__/**"],
-      "linter": {
-        "rules": {
-          "performance": {
-            "noImgElement": "off"
-          }
-        }
-      }
-    }
-  ],
-  "root": true,
-  "vcs": {
-    "clientKind": "git",
-    "enabled": true,
-    "useIgnoreFile": true
   }
 }

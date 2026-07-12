@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
+import { octokit } from "~/lib/github";
 import { config } from "./config";
 import { log } from "./lib/logger";
-import {octokit} from "~/lib/github";
 
 // execFileSync (not execSync) on purpose — arguments are passed as an array,
 // with no shell interpolation. The `taskSummary` passed into commitAndOpenPR
@@ -34,21 +34,20 @@ export async function commitAndOpenPR(taskSummary: string, body: string): Promis
     throw new Error("The REPO environment variable must be in 'owner/repo' format");
   }
 
-
   const pr = await octokit.pulls.create({
     owner,
     repo,
     title: `[agent] ${taskSummary.slice(0, 72)}`,
     body,
     head: branch,
-    base: "main",
+    base: "main"
   });
 
   await octokit.issues.addLabels({
     owner,
     repo,
     issue_number: pr.data.number,
-    labels: ["ai-generated"],
+    labels: ["ai-generated"]
   });
 
   log("pr_created", { url: pr.data.html_url });

@@ -18,10 +18,12 @@ szumrak/
 ├── docker/Dockerfile
 ├── src/
 │   ├── index.ts        # entrypoint
-│   ├── run-agent.ts     # wrapper around the Claude Agent SDK
-│   ├── git.ts          # commit/push/PR
+│   ├── run-agent.ts    # wrapper around the Claude Agent SDK
+│   ├── git.ts          # commit/push/PR (commitAndOpenPR)
 │   ├── config.ts       # limits, constants
-│   └── logger.ts       # structured logging to JSONL
+│   └── lib/
+│       ├── github.ts   # Octokit client
+│       └── logger.ts   # structured logging to JSONL
 └── target-repo-templates/  # files to copy INTO the target repo
     ├── CLAUDE.md
     └── .claude/

@@ -1,7 +1,7 @@
-import { runAgent } from "./run-agent";
-import { commitAndOpenPR } from "./git";
 import { config } from "./config";
+import { commitAndOpenPR } from "./git";
 import { log } from "./lib/logger";
+import { runAgent } from "./run-agent";
 
 async function main() {
   const task = process.env.TASK;

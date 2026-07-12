@@ -4,5 +4,5 @@ export const config = {
   workspacePath: process.env.WORKSPACE_PATH ?? "/workspace",
   branchPrefix: "agent/",
   protectedBranches: ["main", "master"],
-  dryRun: process.env.DRY_RUN === "true",
+  dryRun: process.env.DRY_RUN === "true"
 };
