@@ -19,20 +19,22 @@ from source (`docker build`) inside the target repo's CI, rather than published 
 ## Commands
 
 ```bash
-npm run build       # tsc → dist/
-npm run typecheck   # tsc --noEmit
-npm start           # node dist/index.js  (build first)
-npm run dev:build   # build + docker build -t szumrak -f docker/Dockerfile .
+npm start           # tsx src/index.ts — runs the agent (no build step)
+npm run typecheck   # tsc --noEmit (tsconfig is noEmit; Bundler resolution, extensionless imports)
+npm run dev:build   # docker build -t szumrak -f docker/Dockerfile .
 npm run dev:run     # docker run against $TARGET_REPO_PATH mounted at /workspace (DRY_RUN on)
+npm run biome:check # Biome lint+format check (biome:fix to autofix)
 ```
 
-There is **no test suite and no linter configured** — do not invent `npm test`/`npm run lint`
-commands for this repo. Verification is `npm run typecheck` + `npm run build`.
+There is **no build step and no test suite**: the TypeScript source is run directly via
+**tsx** (locally and in Docker), so there is no `dist/`. `tsc` is typecheck-only (`noEmit`).
+Lint/format is **Biome** — it strips `.js` extensions from relative imports, which is why the
+tsconfig uses `module: "ESNext"` + `moduleResolution: "Bundler"`; do not reintroduce NodeNext or
+`.js` import extensions (they fight Biome and break the build). Verification is `npm run typecheck`.
 
 Running the agent locally (Level 1, fastest loop — see README for Levels 2/3):
 
 ```bash
-npm run build
 WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk-ant-... npm start
 ```
 
@@ -41,7 +43,7 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
 `src/index.ts` (entrypoint, reads env) → `runAgent(task)` → on success and not `DRY_RUN`,
 `commitAndOpenPR(...)`.
 
-- **`runAgent.ts`** wraps the SDK `query()` stream. `permissionMode: "acceptEdits"`, `maxTurns`
+- **`run-agent.ts`** wraps the SDK `query()` stream. `permissionMode: "acceptEdits"`, `maxTurns`
   from config, **no `skills` option** (the agent runs without skills — see below). It walks the
   message stream: assistant tool-use/text blocks live under `message.message.content`; the final
   outcome is a `type: "result"` message where success is `subtype === "success" && !is_error` and
@@ -57,7 +59,7 @@ Config is entirely env-var driven: `TASK`, `WORKSPACE_PATH`, `REPO` (`owner/repo
 ## Invariants — do not regress these
 
 - **SDK typings are ground truth, not the online docs.** Verify the Claude Agent SDK API against
-  `node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts` before changing `runAgent.ts`. The public
+  `node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts` before changing `run-agent.ts`. The public
   docs summary has been wrong about message/result shapes (e.g. claiming flat `message.content` or
   a `status` field — neither exists in the installed version).
 - **`git.ts` uses `execFileSync` with an argument array on purpose — never `execSync` on an

@@ -9,7 +9,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends git curl ca-cer
 WORKDIR /agent
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev
-COPY dist ./dist
+COPY tsconfig.json ./
+COPY src ./src
 
-WORKDIR /workspace
-ENTRYPOINT ["node", "/agent/dist/index.js"]
+# Run the TypeScript source directly with tsx (no build step); imports are
+# extensionless and resolved by tsx, matching the Bundler moduleResolution.
+# The agent's working directory (target repo) comes from WORKSPACE_PATH, not
+# from the process cwd, so keeping WORKDIR at /agent is fine.
+ENTRYPOINT ["node_modules/.bin/tsx", "src/index.ts"]

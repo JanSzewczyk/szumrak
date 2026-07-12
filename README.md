@@ -49,10 +49,10 @@ target repo's `CLAUDE.md`. Recommended order of work:
 
 ### Level 1 — directly on the host (no Docker)
 
-The fastest feedback loop, for debugging the agent logic itself.
+The fastest feedback loop, for debugging the agent logic itself. `npm start` runs
+the TypeScript source directly with tsx — no build step.
 
 ```bash
-npm run build
 WORKSPACE_PATH=/path/to/local/target-repo \
 TASK="Add a unit test for the formatDate helper" \
 DRY_RUN=true \
