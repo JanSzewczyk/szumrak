@@ -1,4 +1,4 @@
-import { runAgent } from "./runAgent.js";
+import { runAgent } from "./run-agent";
 import { commitAndOpenPR } from "./git.js";
 import { config } from "./config.js";
 import { log } from "./logger.js";

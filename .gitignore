@@ -7,3 +7,5 @@ agent-run.jsonl
 !.env.example
 .DS_Store
 .idea/
+
+!bash.exe.stackdump

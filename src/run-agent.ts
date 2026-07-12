@@ -1,6 +1,6 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { config } from "./config.js";
-import { log } from "./logger.js";
+import { config } from "./config";
+import { log } from "./logger";
 
 export interface AgentToolCall {
   name: string;

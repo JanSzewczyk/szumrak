@@ -18,7 +18,7 @@ szumrak/
 ├── docker/Dockerfile
 ├── src/
 │   ├── index.ts        # entrypoint
-│   ├── runAgent.ts     # wrapper around the Claude Agent SDK
+│   ├── run-agent.ts     # wrapper around the Claude Agent SDK
 │   ├── git.ts          # commit/push/PR
 │   ├── config.ts       # limits, constants
 │   └── logger.ts       # structured logging to JSONL
@@ -67,7 +67,7 @@ Validates environment isolation (missing binaries, paths, permissions).
 ```bash
 npm run dev:build
 
-CRAFTFLOW_PATH=/path/to/local/target-repo \
+TARGET_REPO_PATH=/path/to/local/target-repo \
 TASK="Add a unit test for the formatDate helper" \
 npm run dev:run
 ```
@@ -84,6 +84,6 @@ in the target repo (a later rollout phase, not yet implemented in this repo).
 ## Note on the SDK dependency
 
 `@anthropic-ai/claude-agent-sdk` is updated frequently. Before making larger
-changes in `src/runAgent.ts`, verify the current API shape directly in
+changes in `src/run-agent.ts`, verify the current API shape directly in
 `node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts` — the online docs can lag
 behind the actually published version.

@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { Octokit } from "@octokit/rest";
-import { config } from "./config.js";
-import { log } from "./logger.js";
+import { config } from "./config";
+import { log } from "./logger";
 
 // execFileSync (not execSync) on purpose — arguments are passed as an array,
 // with no shell interpolation. The `taskSummary` passed into commitAndOpenPR
