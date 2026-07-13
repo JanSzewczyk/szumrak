@@ -46,7 +46,7 @@ describe("commitAndOpenPR", () => {
 
   test("returns null and does not commit/push/open a PR when there are no changes", async () => {
     mockedExecFileSync.mockImplementation((_cmd, args) => {
-      const argv = args as string[];
+      const argv = args as Array<string>;
       if (argv[0] === "status") return "";
       return "";
     });
@@ -57,13 +57,13 @@ describe("commitAndOpenPR", () => {
     expect(mockedPullsCreate).not.toHaveBeenCalled();
     expect(mockedAddLabels).not.toHaveBeenCalled();
 
-    const commands = mockedExecFileSync.mock.calls.map(([, args]) => (args as string[])[0]);
+    const commands = mockedExecFileSync.mock.calls.map(([, args]) => (args as Array<string>)[0]);
     expect(commands).toEqual(["checkout", "status"]);
   });
 
   test("checks out a branch and checks status before deciding whether to commit", async () => {
     mockedExecFileSync.mockImplementation((_cmd, args) => {
-      const argv = args as string[];
+      const argv = args as Array<string>;
       if (argv[0] === "checkout") {
         expect(argv[1]).toBe("-b");
         expect(argv[2]).toMatch(/^agent\/\d+$/);
@@ -83,7 +83,7 @@ describe("commitAndOpenPR", () => {
 
   test("commits, pushes and opens a PR when there are changes", async () => {
     mockedExecFileSync.mockImplementation((_cmd, args) => {
-      const argv = args as string[];
+      const argv = args as Array<string>;
       if (argv[0] === "status") return " M src/foo.ts\n";
       return "";
     });
@@ -96,7 +96,7 @@ describe("commitAndOpenPR", () => {
 
     expect(result).toBe("https://github.com/acme/widgets/pull/42");
 
-    const commands = mockedExecFileSync.mock.calls.map(([, args]) => (args as string[])[0]);
+    const commands = mockedExecFileSync.mock.calls.map(([, args]) => (args as Array<string>)[0]);
     expect(commands).toEqual(["checkout", "status", "add", "commit", "push"]);
 
     expect(mockedExecFileSync).toHaveBeenCalledWith("git", ["add", "-A"], expect.anything());
@@ -131,7 +131,7 @@ describe("commitAndOpenPR", () => {
   test("truncates taskSummary to 72 characters in the commit message and PR title", async () => {
     const longSummary = "A".repeat(100);
     mockedExecFileSync.mockImplementation((_cmd, args) => {
-      const argv = args as string[];
+      const argv = args as Array<string>;
       if (argv[0] === "status") return " M src/foo.ts\n";
       return "";
     });
@@ -162,7 +162,7 @@ describe("commitAndOpenPR", () => {
       process.env.REPO = repoValue;
     }
     mockedExecFileSync.mockImplementation((_cmd, args) => {
-      const argv = args as string[];
+      const argv = args as Array<string>;
       if (argv[0] === "status") return " M src/foo.ts\n";
       return "";
     });

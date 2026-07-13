@@ -12,7 +12,7 @@ const BRANCH_PREFIX = "agent/";
 // set from a GitHub comment body — i.e. from any user able to comment on an
 // issue. A string interpolated into `git commit -m "..."` would be a command
 // injection vector (quote escaping, `$()`, backticks, etc.).
-function git(args: string[]): string {
+function git(args: Array<string>): string {
   log("git", { args });
   return execFileSync("git", args, { cwd: env.WORKSPACE_PATH, encoding: "utf-8" });
 }

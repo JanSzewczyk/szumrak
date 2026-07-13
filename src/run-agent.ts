@@ -10,15 +10,15 @@ export interface AgentToolCall {
 }
 
 export interface AgentRunResult {
-  toolCalls: AgentToolCall[];
+  toolCalls: Array<AgentToolCall>;
   finalMessage: string;
   succeeded: boolean;
   totalCostUsd?: number;
 }
 
 interface AgentPermissions {
-  allow?: string[];
-  deny?: string[];
+  allow?: Array<string>;
+  deny?: Array<string>;
 }
 
 // Target repos opt into an agent-specific tool whitelist/denylist by committing
@@ -66,7 +66,14 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
   let totalCostUsd: number | undefined;
   const startedAt = Date.now();
 
-  log("agent_start", { task });
+  log("agent_start", {
+    task,
+    workspacePath: env.WORKSPACE_PATH,
+    requestedModel: env.AGENT_MODEL ?? "default",
+    maxTurns: env.MAX_TURNS,
+    maxDurationMs: env.MAX_DURATION_MS,
+    nodeVersion: process.version
+  });
 
   const permissions = loadAgentPermissions(env.WORKSPACE_PATH);
   const claudeMd = loadClaudeMd(env.WORKSPACE_PATH);
@@ -114,6 +121,17 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
       log("agent_message", { type: message.type, text: textBlocks.join("\n") || undefined });
     } else if (message.type === "user") {
       log("agent_message", { type: message.type, content: message.message.content });
+    } else if (message.type === "system" && "subtype" in message && message.subtype === "init") {
+      log("agent_init", {
+        model: message.model,
+        claudeCodeVersion: message.claude_code_version,
+        apiKeySource: message.apiKeySource,
+        permissionMode: message.permissionMode,
+        cwd: message.cwd,
+        toolCount: message.tools?.length,
+        mcpServers: message.mcp_servers,
+        sessionId: message.session_id
+      });
     } else {
       log("agent_message", { type: message.type, ...("subtype" in message ? { subtype: message.subtype } : {}) });
     }

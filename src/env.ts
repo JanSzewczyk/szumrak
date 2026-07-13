@@ -5,7 +5,7 @@ import { z } from "zod";
 // Fail fast with a readable message instead of a raw stack trace when the
 // environment is misconfigured. This runs at import time — before the agent
 // starts — so a bad configuration never wastes an API run.
-function reportInvalidEnv(issues: readonly StandardSchemaV1.Issue[]): never {
+function reportInvalidEnv(issues: ReadonlyArray<StandardSchemaV1.Issue>): never {
   console.error("❌ Invalid environment configuration:");
   for (const issue of issues) {
     const path = issue.path?.map((segment) => (typeof segment === "object" ? segment.key : segment)).join(".");
