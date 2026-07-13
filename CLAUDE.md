@@ -11,7 +11,8 @@ leaves changes on disk only.
 
 The critical distinction to hold in mind: **this repo never operates on itself.** It is a tool
 that acts on some other repo. `src/` is the engine; `target-repo-templates/` are files meant to
-be copied *into the target repo* (its `CLAUDE.md`, `.claude/settings.json`), not consumed here.
+be copied *into the target repo* (its `CLAUDE.md`, `.claude/agent-permissions.json`), not
+consumed here.
 
 Deployment model is "Option A" (see Notion): Szumrak stays a separate repo and is built locally
 from source (`docker build`) inside the target repo's CI, rather than published as an image.
@@ -52,6 +53,14 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   message stream: assistant tool-use/text blocks live under `message.message.content`; the final
   outcome is a `type: "result"` message where success is `subtype === "success" && !is_error` and
   the summary text is `message.result`. A wall-clock guard throws past `maxDurationMs`.
+  Before calling `query()`, it reads `<WORKSPACE_PATH>/.claude/agent-permissions.json` (if the
+  target repo committed one) and passes its `allow`/`deny` arrays through as the SDK's
+  `allowedTools`/`disallowedTools`. This file is intentionally **not** the target repo's own
+  `.claude/settings.json` — that one governs interactive Claude Code sessions (hooks, personal
+  permissions) for a human working in that repo, and doubling it as the unattended agent's
+  sandbox would leak agent restrictions into the human's session and vice versa. A missing or
+  invalid permissions file just means "no extra restriction beyond `acceptEdits`" — it never
+  throws.
 - **`git.ts`** does branch → commit → push → PR create (via the Octokit client from
   `src/lib/github.ts`) → add `ai-generated` label. The agent itself never runs git; all git/PR
   work happens here, in Node, *after* the run.
