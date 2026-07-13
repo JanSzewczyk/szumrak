@@ -11,7 +11,13 @@
 // 6. Non-assistant, non-result message types (e.g. "system") are ignored for
 //    toolCalls/finalMessage/succeeded but don't break iteration.
 // 7. Exceeding env.MAX_DURATION_MS mid-stream throws "Agent exceeded max duration".
+// 8. When `<WORKSPACE_PATH>/.claude/agent-permissions.json` exists, its `allow`/`deny`
+//    arrays are passed through as `allowedTools`/`disallowedTools`.
+// 9. When the file is missing or invalid JSON, allowedTools/disallowedTools stay
+//    undefined instead of throwing.
 
+import { existsSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { runAgent } from "~/run-agent";
 
@@ -23,17 +29,24 @@ vi.mock("~/lib/logger", () => ({
   log: vi.fn()
 }));
 
+vi.mock("node:fs", () => ({
+  existsSync: vi.fn(),
+  readFileSync: vi.fn()
+}));
+
 const mockedQuery = vi.mocked(query);
+const mockedExistsSync = vi.mocked(existsSync);
+const mockedReadFileSync = vi.mocked(readFileSync);
 
 // Builds a minimal async generator that yields the given messages, mimicking
 // the shape of the SDK's `Query` (AsyncGenerator<SDKMessage, void>).
-async function* streamOf(messages: unknown[]) {
+async function* streamOf(messages: Array<unknown>) {
   for (const message of messages) {
     yield message as never;
   }
 }
 
-function assistantMessage(content: unknown[]) {
+function assistantMessage(content: Array<unknown>) {
   return { type: "assistant", message: { content } };
 }
 
@@ -55,6 +68,7 @@ describe("runAgent", () => {
     process.env.WORKSPACE_PATH = "/workspace";
     process.env.MAX_TURNS = "30";
     process.env.MAX_DURATION_MS = String(15 * 60 * 1000);
+    mockedExistsSync.mockReturnValue(false);
   });
 
   test("calls query with the task prompt and options derived from env", async () => {
@@ -153,5 +167,51 @@ describe("runAgent", () => {
     mockedQuery.mockReturnValue(streamOf([assistantMessage([{ type: "text", text: "slow" }])]) as never);
 
     await expect(runAgent("task")).rejects.toThrow("Agent exceeded max duration");
+  });
+
+  test("passes allow/deny from .claude/agent-permissions.json as allowedTools/disallowedTools", async () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue(JSON.stringify({ allow: ["Read", "Edit"], deny: ["Bash(rm -rf*)"] }));
+    mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+
+    await runAgent("task");
+
+    expect(mockedExistsSync).toHaveBeenCalledWith(join("/workspace", ".claude", "agent-permissions.json"));
+    expect(mockedQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          allowedTools: ["Read", "Edit"],
+          disallowedTools: ["Bash(rm -rf*)"]
+        })
+      })
+    );
+  });
+
+  test("leaves allowedTools/disallowedTools undefined when the permissions file is absent", async () => {
+    mockedExistsSync.mockReturnValue(false);
+    mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+
+    await runAgent("task");
+
+    expect(mockedReadFileSync).not.toHaveBeenCalled();
+    expect(mockedQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.not.objectContaining({ allowedTools: expect.anything() })
+      })
+    );
+  });
+
+  test("leaves allowedTools/disallowedTools undefined when the permissions file is invalid JSON", async () => {
+    mockedExistsSync.mockReturnValue(true);
+    mockedReadFileSync.mockReturnValue("not json");
+    mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+
+    await runAgent("task");
+
+    expect(mockedQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.not.objectContaining({ allowedTools: expect.anything() })
+      })
+    );
   });
 });
