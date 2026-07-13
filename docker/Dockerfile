@@ -6,6 +6,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends git curl ca-cer
     && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
+# WORKSPACE_PATH is bind-mounted from the host (or a GitHub Actions runner),
+# whose file owner UID rarely matches the UID running inside this container.
+# Git's ownership check refuses to operate on such a directory ("dubious
+# ownership") unless it's explicitly trusted; every target repo mounted here
+# is trusted by design (that's the whole point of the mount).
+RUN git config --system --add safe.directory '*'
+
 WORKDIR /agent
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev

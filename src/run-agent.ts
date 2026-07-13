@@ -40,6 +40,21 @@ function loadAgentPermissions(workspacePath: string): AgentPermissions {
   }
 }
 
+// Read manually because `settingSources` below excludes 'project', which is
+// what normally makes the SDK discover CLAUDE.md. See runAgent() for why.
+function loadClaudeMd(workspacePath: string): string | undefined {
+  const claudeMdPath = join(workspacePath, "CLAUDE.md");
+  if (!existsSync(claudeMdPath)) {
+    return undefined;
+  }
+  try {
+    return readFileSync(claudeMdPath, "utf-8");
+  } catch (err) {
+    log("claude_md_unreadable", { claudeMdPath, error: String(err) });
+    return undefined;
+  }
+}
+
 // The agent edits files through the SDK's built-in tools (Read/Edit/Grep/Glob).
 // Commit/push/PR happens separately in git.ts after the run finishes — the agent
 // never runs `git push`/`gh pr create` itself, so permissionMode "acceptEdits"
@@ -54,6 +69,7 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
   log("agent_start", { task });
 
   const permissions = loadAgentPermissions(env.WORKSPACE_PATH);
+  const claudeMd = loadClaudeMd(env.WORKSPACE_PATH);
 
   const stream = query({
     prompt: task,
@@ -63,7 +79,21 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
       maxTurns: env.MAX_TURNS,
       model: env.AGENT_MODEL,
       allowedTools: permissions.allow,
-      disallowedTools: permissions.deny
+      disallowedTools: permissions.deny,
+      // Never load the target repo's .claude/settings.json or
+      // settings.local.json (the SDK default is to load everything it finds).
+      // Those files are written for interactive Claude Code sessions — hooks
+      // in particular tend to assume an interactive shell and can hard-loop
+      // or crash an unattended run (e.g. a PreToolUse hook using bash-only
+      // `[[ ]]` syntax fails under this image's /bin/sh and blocks every tool
+      // call). Tool restrictions for the agent come only from
+      // agent-permissions.json above. CLAUDE.md is loaded manually via
+      // systemPrompt.append instead, since 'project' is what would normally
+      // pull it in alongside the hooks we're excluding.
+      settingSources: [],
+      systemPrompt: claudeMd
+        ? { type: "preset", preset: "claude_code", append: claudeMd }
+        : { type: "preset", preset: "claude_code" }
     }
   });
 
