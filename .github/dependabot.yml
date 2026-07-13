@@ -1,0 +1,27 @@
+version: 2
+updates:
+  # Maintain dependencies for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "21:37"
+      timezone: "Europe/Warsaw"
+    groups:
+      github-dependencies:
+        patterns:
+          - "*"
+
+  # Maintain dependencies for npm
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "21:37"
+      timezone: "Europe/Warsaw"
+    groups:
+      project-dependencies:
+        patterns:
+          - "*"
