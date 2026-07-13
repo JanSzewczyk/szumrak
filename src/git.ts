@@ -12,9 +12,9 @@ const BRANCH_PREFIX = "agent/";
 function buildBranchName(commitMetadata: CommitMetadata | undefined): string {
   const uniqueSuffix = Date.now().toString(36);
   if (!commitMetadata) {
-    return `${BRANCH_PREFIX}${uniqueSuffix}`;
+    return uniqueSuffix;
   }
-  return `${BRANCH_PREFIX}${commitMetadata.type}/${commitMetadata.branchSlug}-${uniqueSuffix}`;
+  return `${commitMetadata.type}/${commitMetadata.branchSlug}-${uniqueSuffix}`;
 }
 
 // Falls back to the old behavior (always "chore(agent): <task text>") when
