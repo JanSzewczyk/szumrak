@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.2](https://github.com/JanSzewczyk/szumrak/compare/v1.0.1...v1.0.2) (2026-07-13)
+
+### Bug Fixes
+
+* configure a git bot identity in the agent image ([4061ee0](https://github.com/JanSzewczyk/szumrak/commit/4061ee0fd9d93748d0a08b756d45b8d433ce5c4e))
+
 ## [1.0.1](https://github.com/JanSzewczyk/szumrak/compare/v1.0.0...v1.0.1) (2026-07-13)
 
 ### Bug Fixes
