@@ -1,16 +1,23 @@
-// Test plan for src/git.ts — commitAndOpenPR(taskSummary, body)
+// Test plan for src/git.ts — commitAndOpenPR(taskSummary, body, commitMetadata?)
 // 1. "no changes" path: `git status --porcelain` returns empty output → returns null,
-//    no add/commit/push/PR calls happen (branch checkout still runs).
-// 2. "has changes" happy path: full flow (checkout, status, add, commit, push, PR
-//    create, add label) runs in order and the function resolves to pr.data.html_url.
+//    no add/commit/push/PR calls happen (remote auth + branch checkout still run).
+// 2. "has changes" happy path: full flow (remote auth, checkout, status, add, commit,
+//    push, PR create, add label) runs in order and resolves to pr.data.html_url.
 // 3. execFileSync is invoked with an argument array (never a single interpolated
 //    string) for every git subcommand — this is the command-injection guard the repo
 //    explicitly calls out; assert the exact argv shapes.
-// 4. taskSummary is truncated to 72 chars in both the commit message and the PR title.
-// 5. env.REPO validation: throws a clear error when REPO is missing or not in
-//    "owner/repo" format, and this happens AFTER push (per current source order) but
-//    BEFORE any Octokit call.
-// 6. octokit.pulls.create is called with the correct owner/repo/head/base/title/body,
+// 4. Without commitMetadata: falls back to "chore(agent): <taskSummary, truncated to
+//    72 chars>" for both the commit message and PR title (title == commit message,
+//    since GitHub squash-merge uses the PR title as the final commit that
+//    semantic-release parses).
+// 5. With commitMetadata: branch is agent/<type>/<slug>-<suffix>, commit message and
+//    PR title are "<type>(<scope>): <subject>" (scope omitted when absent).
+// 6. The remote is reauthenticated via an embedded token (`configureGitRemoteAuth`)
+//    before anything else, and that call is never routed through the logging git()
+//    wrapper (the token must never reach agent-run.jsonl).
+// 7. env.REPO validation: throws a clear error when REPO is missing or not in
+//    "owner/repo" format, before any git or Octokit call happens.
+// 8. octokit.pulls.create is called with the correct owner/repo/head/base/title/body,
 //    and octokit.issues.addLabels is called with the "ai-generated" label for the
 //    created PR's issue_number.
 
@@ -42,6 +49,7 @@ describe("commitAndOpenPR", () => {
     vi.clearAllMocks();
     process.env.WORKSPACE_PATH = "/workspace";
     process.env.REPO = "acme/widgets";
+    process.env.GH_TOKEN = "test-token";
   });
 
   test("returns null and does not commit/push/open a PR when there are no changes", async () => {
@@ -58,15 +66,15 @@ describe("commitAndOpenPR", () => {
     expect(mockedAddLabels).not.toHaveBeenCalled();
 
     const commands = mockedExecFileSync.mock.calls.map(([, args]) => (args as Array<string>)[0]);
-    expect(commands).toEqual(["checkout", "status"]);
+    expect(commands).toEqual(["remote", "checkout", "status"]);
   });
 
-  test("checks out a branch and checks status before deciding whether to commit", async () => {
+  test("authenticates the remote with an embedded token before checking out a branch", async () => {
     mockedExecFileSync.mockImplementation((_cmd, args) => {
       const argv = args as Array<string>;
       if (argv[0] === "checkout") {
         expect(argv[1]).toBe("-b");
-        expect(argv[2]).toMatch(/^agent\/\d+$/);
+        expect(argv[2]).toMatch(/^agent\/[a-z0-9]+$/);
       }
       if (argv[0] === "status") return "";
       return "";
@@ -74,6 +82,12 @@ describe("commitAndOpenPR", () => {
 
     await commitAndOpenPR("Fix the bug", "body text");
 
+    expect(mockedExecFileSync).toHaveBeenNthCalledWith(
+      1,
+      "git",
+      ["remote", "set-url", "origin", "https://x-access-token:test-token@github.com/acme/widgets.git"],
+      { cwd: "/workspace" }
+    );
     expect(mockedExecFileSync).toHaveBeenCalledWith(
       "git",
       expect.arrayContaining(["checkout", "-b"]),
@@ -81,7 +95,7 @@ describe("commitAndOpenPR", () => {
     );
   });
 
-  test("commits, pushes and opens a PR when there are changes", async () => {
+  test("without commitMetadata: commits, pushes and opens a PR titled with the chore(agent) fallback", async () => {
     mockedExecFileSync.mockImplementation((_cmd, args) => {
       const argv = args as Array<string>;
       if (argv[0] === "status") return " M src/foo.ts\n";
@@ -97,7 +111,7 @@ describe("commitAndOpenPR", () => {
     expect(result).toBe("https://github.com/acme/widgets/pull/42");
 
     const commands = mockedExecFileSync.mock.calls.map(([, args]) => (args as Array<string>)[0]);
-    expect(commands).toEqual(["checkout", "status", "add", "commit", "push"]);
+    expect(commands).toEqual(["remote", "checkout", "status", "add", "commit", "push"]);
 
     expect(mockedExecFileSync).toHaveBeenCalledWith("git", ["add", "-A"], expect.anything());
     expect(mockedExecFileSync).toHaveBeenCalledWith(
@@ -115,7 +129,7 @@ describe("commitAndOpenPR", () => {
       expect.objectContaining({
         owner: "acme",
         repo: "widgets",
-        title: "[agent] Fix the annoying bug",
+        title: "chore(agent): Fix the annoying bug",
         body: "PR body",
         base: "main"
       })
@@ -128,7 +142,7 @@ describe("commitAndOpenPR", () => {
     });
   });
 
-  test("truncates taskSummary to 72 characters in the commit message and PR title", async () => {
+  test("truncates taskSummary to 72 characters in the fallback commit message and PR title", async () => {
     const longSummary = "A".repeat(100);
     mockedExecFileSync.mockImplementation((_cmd, args) => {
       const argv = args as Array<string>;
@@ -148,28 +162,83 @@ describe("commitAndOpenPR", () => {
       ["commit", "-m", `chore(agent): ${truncated}`],
       expect.anything()
     );
-    expect(mockedPullsCreate).toHaveBeenCalledWith(expect.objectContaining({ title: `[agent] ${truncated}` }));
+    expect(mockedPullsCreate).toHaveBeenCalledWith(expect.objectContaining({ title: `chore(agent): ${truncated}` }));
+  });
+
+  test("with commitMetadata: branch, commit message and PR title use the agent-derived type/scope/subject", async () => {
+    mockedExecFileSync.mockImplementation((_cmd, args) => {
+      const argv = args as Array<string>;
+      if (argv[0] === "checkout") {
+        expect(argv[2]).toMatch(/^agent\/test\/add-search-params-tests-[a-z0-9]+$/);
+      }
+      if (argv[0] === "status") return " M utils/search-params.test.ts\n";
+      return "";
+    });
+    mockedPullsCreate.mockResolvedValue({
+      data: { number: 7, html_url: "https://github.com/acme/widgets/pull/7" }
+    } as never);
+    mockedAddLabels.mockResolvedValue({} as never);
+
+    const result = await commitAndOpenPR("Add tests for search params", "PR body", {
+      type: "test",
+      scope: "search-params",
+      subject: "add unit tests for parseSearchParams",
+      branchSlug: "add-search-params-tests"
+    });
+
+    expect(result).toBe("https://github.com/acme/widgets/pull/7");
+    expect(mockedExecFileSync).toHaveBeenCalledWith(
+      "git",
+      ["commit", "-m", "test(search-params): add unit tests for parseSearchParams"],
+      expect.anything()
+    );
+    expect(mockedPullsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "test(search-params): add unit tests for parseSearchParams" })
+    );
+  });
+
+  test("with commitMetadata but no scope: omits the parenthesized scope from commit message and title", async () => {
+    mockedExecFileSync.mockImplementation((_cmd, args) => {
+      const argv = args as Array<string>;
+      if (argv[0] === "status") return " M README.md\n";
+      return "";
+    });
+    mockedPullsCreate.mockResolvedValue({
+      data: { number: 8, html_url: "https://github.com/acme/widgets/pull/8" }
+    } as never);
+    mockedAddLabels.mockResolvedValue({} as never);
+
+    await commitAndOpenPR("Update docs", "PR body", {
+      type: "docs",
+      subject: "clarify setup instructions",
+      branchSlug: "clarify-setup-docs"
+    });
+
+    expect(mockedExecFileSync).toHaveBeenCalledWith(
+      "git",
+      ["commit", "-m", "docs: clarify setup instructions"],
+      expect.anything()
+    );
+    expect(mockedPullsCreate).toHaveBeenCalledWith(
+      expect.objectContaining({ title: "docs: clarify setup instructions" })
+    );
   });
 
   test.each([
     ["undefined", undefined],
     ["missing slash", "not-a-valid-repo"],
     ["empty string", ""]
-  ])("throws when REPO is %s", async (_label, repoValue) => {
+  ])("throws when REPO is %s, before any git or Octokit call", async (_label, repoValue) => {
     if (repoValue === undefined) {
       delete process.env.REPO;
     } else {
       process.env.REPO = repoValue;
     }
-    mockedExecFileSync.mockImplementation((_cmd, args) => {
-      const argv = args as Array<string>;
-      if (argv[0] === "status") return " M src/foo.ts\n";
-      return "";
-    });
 
     await expect(commitAndOpenPR("Fix the bug", "body")).rejects.toThrow(
       "The REPO environment variable must be in 'owner/repo' format"
     );
+    expect(mockedExecFileSync).not.toHaveBeenCalled();
     expect(mockedPullsCreate).not.toHaveBeenCalled();
   });
 });

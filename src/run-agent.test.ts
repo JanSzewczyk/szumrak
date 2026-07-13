@@ -1,5 +1,7 @@
 // Test plan for src/run-agent.ts — runAgent(task)
-// 1. Calls query() with the task as `prompt` and cwd/permissionMode/maxTurns from env.
+// 1. Calls query() with the task as `prompt` and cwd/permissionMode/maxTurns from env,
+//    settingSources: [] (never load the target repo's settings.json/hooks), and a
+//    systemPrompt preset with commit-metadata instructions appended.
 // 2. Collects `tool_use` content blocks from assistant messages into `toolCalls`
 //    ({ name, input }), in stream order.
 // 3. `text` content blocks from assistant messages set/overwrite `finalMessage`.
@@ -15,6 +17,10 @@
 //    arrays are passed through as `allowedTools`/`disallowedTools`.
 // 9. When the file is missing or invalid JSON, allowedTools/disallowedTools stay
 //    undefined instead of throwing.
+// 10. A trailing ```commit fenced block in the final message is parsed into
+//     commitMetadata and stripped from the returned finalMessage.
+// 11. A missing, malformed, or invalid-type commit block leaves commitMetadata
+//     undefined and finalMessage unchanged.
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -78,11 +84,16 @@ describe("runAgent", () => {
 
     expect(mockedQuery).toHaveBeenCalledWith({
       prompt: "Fix the flaky test",
-      options: {
+      options: expect.objectContaining({
         cwd: "/workspace",
         permissionMode: "acceptEdits",
-        maxTurns: "30"
-      }
+        maxTurns: "30",
+        // Never load the target repo's settings.json/settings.local.json —
+        // see the comment in run-agent.ts on why hooks written for
+        // interactive sessions are unsafe to run unattended.
+        settingSources: [],
+        systemPrompt: expect.objectContaining({ type: "preset", preset: "claude_code" })
+      })
     });
   });
 
@@ -213,5 +224,73 @@ describe("runAgent", () => {
         options: expect.not.objectContaining({ allowedTools: expect.anything() })
       })
     );
+  });
+
+  test("parses a trailing commit block into commitMetadata and strips it from finalMessage", async () => {
+    const finalText = [
+      "I added a test file covering the edge cases.",
+      "",
+      "```commit",
+      "type: test",
+      "scope: search-params",
+      "subject: add unit tests for parseSearchParams",
+      "branch: add-search-params-tests",
+      "```"
+    ].join("\n");
+    mockedQuery.mockReturnValue(streamOf([resultMessage({ result: finalText })]) as never);
+
+    const result = await runAgent("task");
+
+    expect(result.commitMetadata).toEqual({
+      type: "test",
+      scope: "search-params",
+      subject: "add unit tests for parseSearchParams",
+      branchSlug: "add-search-params-tests"
+    });
+    expect(result.finalMessage).toBe("I added a test file covering the edge cases.");
+  });
+
+  test("parses a commit block without a scope, omitting scope from commitMetadata", async () => {
+    const finalText = [
+      "```commit",
+      "type: docs",
+      "subject: clarify setup instructions",
+      "branch: clarify-setup-docs",
+      "```"
+    ].join("\n");
+    mockedQuery.mockReturnValue(streamOf([resultMessage({ result: finalText })]) as never);
+
+    const result = await runAgent("task");
+
+    expect(result.commitMetadata).toEqual({
+      type: "docs",
+      scope: undefined,
+      subject: "clarify setup instructions",
+      branchSlug: "clarify-setup-docs"
+    });
+  });
+
+  test("leaves commitMetadata undefined when there is no commit block", async () => {
+    mockedQuery.mockReturnValue(streamOf([resultMessage({ result: "All done, no fenced block here." })]) as never);
+
+    const result = await runAgent("task");
+
+    expect(result.commitMetadata).toBeUndefined();
+    expect(result.finalMessage).toBe("All done, no fenced block here.");
+  });
+
+  test("leaves commitMetadata undefined when the commit block has an invalid type", async () => {
+    const finalText = [
+      "```commit",
+      "type: not-a-real-type",
+      "subject: something",
+      "branch: something-slug",
+      "```"
+    ].join("\n");
+    mockedQuery.mockReturnValue(streamOf([resultMessage({ result: finalText })]) as never);
+
+    const result = await runAgent("task");
+
+    expect(result.commitMetadata).toBeUndefined();
   });
 });

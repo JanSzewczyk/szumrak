@@ -9,11 +9,34 @@ export interface AgentToolCall {
   input: Record<string, unknown>;
 }
 
+const CONVENTIONAL_COMMIT_TYPES = [
+  "feat",
+  "fix",
+  "chore",
+  "docs",
+  "style",
+  "refactor",
+  "perf",
+  "test",
+  "build",
+  "ci",
+  "revert"
+] as const;
+type ConventionalCommitType = (typeof CONVENTIONAL_COMMIT_TYPES)[number];
+
+export interface CommitMetadata {
+  type: ConventionalCommitType;
+  scope?: string;
+  subject: string;
+  branchSlug: string;
+}
+
 export interface AgentRunResult {
   toolCalls: Array<AgentToolCall>;
   finalMessage: string;
   succeeded: boolean;
   totalCostUsd?: number;
+  commitMetadata?: CommitMetadata;
 }
 
 interface AgentPermissions {
@@ -38,6 +61,61 @@ function loadAgentPermissions(workspacePath: string): AgentPermissions {
     log("agent_permissions_invalid", { permissionsPath, error: String(err) });
     return {};
   }
+}
+
+// Appended to the system prompt so the agent — the one that actually knows
+// what it changed and why — produces the commit metadata itself, instead of
+// git.ts guessing a commit type from the raw task text (which used to always
+// commit as "chore(agent): ...", regardless of the real change; craft-flow's
+// semantic-release parses commit type for versioning, so a wrong type is a
+// real bug, not just cosmetic). Runs in the same turn as the edits, so it
+// costs no extra API call.
+const COMMIT_METADATA_INSTRUCTIONS = `
+When you have finished making all edits for this task, end your final response with exactly one fenced block in this exact format, describing the change you actually made (not the wording of the task):
+
+\`\`\`commit
+type: <one of feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert>
+scope: <short kebab-case scope, or omit this line if there is none>
+subject: <imperative mood, lowercase, no trailing period, at most 50 characters>
+branch: <kebab-case slug describing the change, at most 40 characters, no type prefix>
+\`\`\`
+
+If you made no changes, omit this block entirely.
+`.trim();
+
+const COMMIT_BLOCK_PATTERN = /```commit\s*\n([\s\S]*?)```/;
+
+function parseCommitMetadata(finalMessage: string): CommitMetadata | undefined {
+  const match = finalMessage.match(COMMIT_BLOCK_PATTERN);
+  if (!match) {
+    return undefined;
+  }
+
+  const fields: Record<string, string> = {};
+  for (const line of match[1].split("\n")) {
+    const fieldMatch = line.match(/^(type|scope|subject|branch):\s*(.+)$/);
+    if (fieldMatch) {
+      fields[fieldMatch[1]] = fieldMatch[2].trim();
+    }
+  }
+
+  const type = fields.type as ConventionalCommitType;
+  if (!CONVENTIONAL_COMMIT_TYPES.includes(type) || !fields.subject || !fields.branch) {
+    log("commit_metadata_invalid", { fields });
+    return undefined;
+  }
+
+  const branchSlug = fields.branch
+    .toLowerCase()
+    .replace(/[^a-z0-9-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40);
+  if (!branchSlug) {
+    log("commit_metadata_invalid", { fields });
+    return undefined;
+  }
+
+  return { type, scope: fields.scope || undefined, subject: fields.subject.slice(0, 50), branchSlug };
 }
 
 // Read manually because `settingSources` below excludes 'project', which is
@@ -98,9 +176,11 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
       // systemPrompt.append instead, since 'project' is what would normally
       // pull it in alongside the hooks we're excluding.
       settingSources: [],
-      systemPrompt: claudeMd
-        ? { type: "preset", preset: "claude_code", append: claudeMd }
-        : { type: "preset", preset: "claude_code" }
+      systemPrompt: {
+        type: "preset",
+        preset: "claude_code",
+        append: claudeMd ? `${claudeMd}\n\n${COMMIT_METADATA_INSTRUCTIONS}` : COMMIT_METADATA_INSTRUCTIONS
+      }
     }
   });
 
@@ -157,7 +237,12 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
     }
   }
 
-  log("agent_end", { toolCallCount: toolCalls.length, succeeded, finalMessage });
+  const commitMetadata = parseCommitMetadata(finalMessage);
+  // Strip the machine-readable block from the human-facing summary (DRY_RUN
+  // console output, PR body) now that it's been parsed out.
+  const displayMessage = finalMessage.replace(COMMIT_BLOCK_PATTERN, "").trim();
 
-  return { toolCalls, finalMessage, succeeded, totalCostUsd };
+  log("agent_end", { toolCallCount: toolCalls.length, succeeded, finalMessage: displayMessage, commitMetadata });
+
+  return { toolCalls, finalMessage: displayMessage, succeeded, totalCostUsd, commitMetadata };
 }

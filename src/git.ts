@@ -2,9 +2,30 @@ import { execFileSync } from "node:child_process";
 import { octokit } from "~/lib/github";
 import { env } from "./env";
 import { log } from "./lib/logger";
+import type { CommitMetadata } from "./run-agent";
 
 // Prefix for branches the agent creates.
 const BRANCH_PREFIX = "agent/";
+
+// A short suffix keeps branch names unique across runs that produce the same
+// type/slug (e.g. two "test/add-x-tests" runs on different days).
+function buildBranchName(commitMetadata: CommitMetadata | undefined): string {
+  const uniqueSuffix = Date.now().toString(36);
+  if (!commitMetadata) {
+    return `${BRANCH_PREFIX}${uniqueSuffix}`;
+  }
+  return `${BRANCH_PREFIX}${commitMetadata.type}/${commitMetadata.branchSlug}-${uniqueSuffix}`;
+}
+
+// Falls back to the old behavior (always "chore(agent): <task text>") when
+// the agent didn't emit a parseable commit block — see run-agent.ts.
+function buildCommitMessage(commitMetadata: CommitMetadata | undefined, taskSummary: string): string {
+  if (!commitMetadata) {
+    return `chore(agent): ${taskSummary.slice(0, 72)}`;
+  }
+  const scope = commitMetadata.scope ? `(${commitMetadata.scope})` : "";
+  return `${commitMetadata.type}${scope}: ${commitMetadata.subject}`;
+}
 
 // execFileSync (not execSync) on purpose — arguments are passed as an array,
 // with no shell interpolation. The `taskSummary` passed into commitAndOpenPR
@@ -29,8 +50,13 @@ function configureGitRemoteAuth(owner: string, repo: string): void {
   log("git", { args: ["remote", "set-url", "origin", "<redacted>"] });
 }
 
-export async function commitAndOpenPR(taskSummary: string, body: string): Promise<string | null> {
-  const branch = `${BRANCH_PREFIX}${Date.now()}`;
+export async function commitAndOpenPR(
+  taskSummary: string,
+  body: string,
+  commitMetadata?: CommitMetadata
+): Promise<string | null> {
+  const branch = buildBranchName(commitMetadata);
+  const commitMessage = buildCommitMessage(commitMetadata, taskSummary);
 
   const [owner, repo] = (env.REPO ?? "").split("/");
   if (!owner || !repo) {
@@ -47,13 +73,17 @@ export async function commitAndOpenPR(taskSummary: string, body: string): Promis
   }
 
   git(["add", "-A"]);
-  git(["commit", "-m", `chore(agent): ${taskSummary.slice(0, 72)}`]);
+  git(["commit", "-m", commitMessage]);
   git(["push", "origin", branch]);
 
   const pr = await octokit.pulls.create({
     owner,
     repo,
-    title: `[agent] ${taskSummary.slice(0, 72)}`,
+    // GitHub's default squash-merge uses the PR title as the final commit
+    // message on the base branch, which is what craft-flow's semantic-release
+    // actually parses — so this needs to be the real Conventional Commits
+    // subject, not a human-readable label like "[agent] <task>".
+    title: commitMessage,
     body,
     head: branch,
     base: "main"

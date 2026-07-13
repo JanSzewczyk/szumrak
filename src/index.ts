@@ -30,7 +30,8 @@ async function main() {
 
     const prUrl = await commitAndOpenPR(
       env.TASK.slice(0, 72),
-      `Task:\n${env.TASK}\n\nGenerated automatically by Szumrak.\n\nModel summary:\n${result.finalMessage}`
+      `Task:\n${env.TASK}\n\nGenerated automatically by Szumrak.\n\nModel summary:\n${result.finalMessage}`,
+      result.commitMetadata
     );
 
     if (prUrl) {
