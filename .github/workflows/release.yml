@@ -26,7 +26,7 @@ jobs:
           cache: "npm"
       - name: Install packages ⚙️
         run: npm ci
-#      - name: Publish package 📦🚀
-#        run: npx semantic-release
-#        env:
-#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish package 📦🚀
+        run: npx semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

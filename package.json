@@ -33,8 +33,10 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.3",
+    "@szum-tech/semantic-release-config": "^2.3.7",
     "@types/node": "^24.13.3",
     "@vitest/coverage-v8": "^4.1.10",
+    "semantic-release": "^25.0.7",
     "typescript": "^6.0.3",
     "vitest": "^4.1.10"
   }
