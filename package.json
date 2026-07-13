@@ -18,7 +18,7 @@
     "start": "tsx src/index.ts",
     "dev:local": "node --env-file-if-exists=.env.local node_modules/tsx/dist/cli.mjs src/index.ts",
     "build": "docker build -t szumrak -f docker/Dockerfile .",
-    "dev:run": "docker run --rm --env-file .env.local -e ANTHROPIC_API_KEY -e GH_TOKEN -e TASK -e REPO -e DRY_RUN=true -v $TARGET_REPO_PATH:/workspace szumrak",
+    "dev:run": "tsx scripts/dev-run.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
