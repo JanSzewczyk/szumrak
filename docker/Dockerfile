@@ -11,7 +11,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends git curl ca-cer
 # Git's ownership check refuses to operate on such a directory ("dubious
 # ownership") unless it's explicitly trusted; every target repo mounted here
 # is trusted by design (that's the whole point of the mount).
-RUN git config --system --add safe.directory '*'
+#
+# The container also has no git identity by default, so `git commit` in
+# git.ts fails with "Author identity unknown". Every commit the agent makes
+# is machine-authored, so a fixed bot identity is set once here rather than
+# per-run.
+RUN git config --system --add safe.directory '*' \
+    && git config --system user.name "szumrak-agent" \
+    && git config --system user.email "szumrak-agent@users.noreply.github.com"
 
 WORKDIR /agent
 COPY package.json package-lock.json ./
