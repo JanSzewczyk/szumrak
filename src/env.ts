@@ -55,7 +55,14 @@ export const env = createEnv({
       .string()
       .min(1)
       .optional()
-      .describe("Path for the JSONL run log; defaults to <WORKSPACE_PATH>/agent-run.jsonl")
+      .describe("Path for the JSONL run log; defaults to <WORKSPACE_PATH>/agent-run.jsonl"),
+    TARGET_REPO_PATH: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Local checkout of the target repository, mounted as /workspace by `npm run dev:run` (Level 2 Docker testing). Not used by the agent itself."
+      )
   },
   runtimeEnv: process.env,
   // Docker/CI often pass unset vars as an empty string (`-e VAR=`); treat those
