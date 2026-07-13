@@ -13,8 +13,11 @@
     "biome:lint": "biome lint .",
     "biome:lint:fix": "biome lint --write .",
     "start": "tsx src/index.ts",
-    "dev:build": "docker build -t szumrak -f docker/Dockerfile .",
+    "build": "docker build -t szumrak -f docker/Dockerfile .",
     "dev:run": "docker run --rm -e ANTHROPIC_API_KEY -e GH_TOKEN -e TASK -e REPO -e DRY_RUN=true -v $TARGET_REPO_PATH:/workspace szumrak",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -27,6 +30,8 @@
   "devDependencies": {
     "@biomejs/biome": "^2.5.3",
     "@types/node": "^24.13.3",
-    "typescript": "^6.0.3"
+    "@vitest/coverage-v8": "^4.1.10",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
   }
 }

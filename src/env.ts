@@ -56,5 +56,10 @@ export const env = createEnv({
   // Docker/CI often pass unset vars as an empty string (`-e VAR=`); treat those
   // as absent so defaults and `.optional()` apply instead of failing `.min(1)`.
   emptyStringAsUndefined: true,
-  onValidationError: reportInvalidEnv
+  onValidationError: reportInvalidEnv,
+  // Lets unit tests import modules that transitively pull in `env` (git.ts,
+  // run-agent.ts, lib/logger.ts) without setting every required var or risking
+  // the process.exit(1) above. Set by vitest.config.ts; never set this in a
+  // real run — it defeats the whole point of validating configuration.
+  skipValidation: process.env.SKIP_ENV_VALIDATION === "true"
 });
