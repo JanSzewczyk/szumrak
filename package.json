@@ -18,7 +18,7 @@
     "start": "tsx src/index.ts",
     "dev:local": "node --env-file-if-exists=.env.local node_modules/tsx/dist/cli.mjs src/index.ts",
     "build": "docker build -t szumrak -f docker/Dockerfile .",
-    "dev:run": "tsx scripts/dev-run.ts",
+    "dev:run": "node --env-file-if-exists=.env.local node_modules/tsx/dist/cli.mjs scripts/dev-run.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
