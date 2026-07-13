@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.0.3](https://github.com/JanSzewczyk/szumrak/compare/v1.0.2...v1.0.3) (2026-07-13)
+
+### Bug Fixes
+
+* authenticate git push with an explicit token-embedded remote URL ([204dd46](https://github.com/JanSzewczyk/szumrak/commit/204dd465e3b2ebccc329d7447de2866d249ea862))
+
 ## [1.0.2](https://github.com/JanSzewczyk/szumrak/compare/v1.0.1...v1.0.2) (2026-07-13)
 
 ### Bug Fixes
