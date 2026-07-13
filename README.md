@@ -5,7 +5,7 @@
 [![GitHub stars](https://img.shields.io/github/stars/JanSzewczyk/szumrak?style=social)](https://github.com/JanSzewczyk/szumrak/stargazers)
 [![CI](https://github.com/JanSzewczyk/szumrak/actions/workflows/pr-check.yml/badge.svg)](https://github.com/JanSzewczyk/szumrak/actions/workflows/pr-check.yml)
 [![CodeQL](https://github.com/JanSzewczyk/szumrak/actions/workflows/codeql.yml/badge.svg)](https://github.com/JanSzewczyk/szumrak/actions/workflows/codeql.yml)
-[![Node.js](https://img.shields.io/badge/Node.js-22%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-24%2B-339933?logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 
 **Autonomous agent that runs Claude against a target repo and opens a reviewed PR**
 
@@ -73,7 +73,7 @@ to be built from source inside a target repository's own CI, rather than publish
 
 Before you begin, ensure you have the following installed:
 
-- **Node.js** 22.x or higher (matches `docker/Dockerfile`'s `node:22-slim` base image)
+- **Node.js** 24.x or higher (matches `docker/Dockerfile`'s `node:24-slim` base image)
 - **npm** (this repo commits `package-lock.json`)
 - **Git**
 - **Docker** — optional, only needed for [Level 2 local testing](#-usage)

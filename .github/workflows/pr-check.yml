@@ -4,7 +4,7 @@ on:
   pull_request:
 
 env:
-  NODE_VERSION: latest
+  NODE_VERSION: "24"
 
 permissions:
   pull-requests: write

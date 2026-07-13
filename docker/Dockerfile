@@ -1,4 +1,4 @@
-FROM node:22-slim
+FROM node:24-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends git curl ca-certificates \
     && curl -sS https://cli.github.com/packages/githubcli-archive-keyring.gpg -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
