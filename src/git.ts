@@ -17,8 +17,26 @@ function git(args: Array<string>): string {
   return execFileSync("git", args, { cwd: env.WORKSPACE_PATH, encoding: "utf-8" });
 }
 
+// actions/checkout persists a credential helper in the checked-out repo's
+// .git/config, but that doesn't reliably carry into this container (mounted
+// volume, different UID/HOME, and the runner's own checkout may not even be
+// the directory that ends up mounted as WORKSPACE_PATH). Embedding the token
+// in the remote URL is explicit and doesn't depend on any of that. Bypasses
+// the git() wrapper so the token is never written to agent-run.jsonl.
+function configureGitRemoteAuth(owner: string, repo: string): void {
+  const authedUrl = `https://x-access-token:${env.GH_TOKEN}@github.com/${owner}/${repo}.git`;
+  execFileSync("git", ["remote", "set-url", "origin", authedUrl], { cwd: env.WORKSPACE_PATH });
+  log("git", { args: ["remote", "set-url", "origin", "<redacted>"] });
+}
+
 export async function commitAndOpenPR(taskSummary: string, body: string): Promise<string | null> {
   const branch = `${BRANCH_PREFIX}${Date.now()}`;
+
+  const [owner, repo] = (env.REPO ?? "").split("/");
+  if (!owner || !repo) {
+    throw new Error("The REPO environment variable must be in 'owner/repo' format");
+  }
+  configureGitRemoteAuth(owner, repo);
 
   git(["checkout", "-b", branch]);
 
@@ -31,11 +49,6 @@ export async function commitAndOpenPR(taskSummary: string, body: string): Promis
   git(["add", "-A"]);
   git(["commit", "-m", `chore(agent): ${taskSummary.slice(0, 72)}`]);
   git(["push", "origin", branch]);
-
-  const [owner, repo] = (env.REPO ?? "").split("/");
-  if (!owner || !repo) {
-    throw new Error("The REPO environment variable must be in 'owner/repo' format");
-  }
 
   const pr = await octokit.pulls.create({
     owner,
