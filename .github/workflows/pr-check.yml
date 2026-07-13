@@ -55,8 +55,8 @@ jobs:
       - name: TypeScript Check 🛠️
         run: npm run typecheck
 
-  test-unit:
-    name: Test Unit 🧪
+  test:
+    name: Tests 🧪
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -71,44 +71,10 @@ jobs:
           cache: "npm"
       - name: Install packages ⚙️
         run: npm ci
-      - name: Run Unit Tests 🧪
-        run: npx vitest run --project=unit --reporter=blob --coverage --outputFile=.vitest-reports/blob-unit.json
-      - name: Upload blob report
-        if: always()
-        uses: actions/upload-artifact@v7
-        with:
-          name: blob-unit
-          path: .vitest-reports/*
-          retention-days: 1
-          include-hidden-files: true
-
-  report-coverage:
-    name: Coverage Report 📊
-    runs-on: ubuntu-latest
-    needs: [test-unit]
-    if: always()
-    permissions:
-      contents: read
-      pull-requests: write
-    steps:
-      - name: Checkout code 📚
-        uses: actions/checkout@v6
-      - name: Set up Node.js 🟢
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-      - name: Install packages ⚙️
-        run: npm ci
-      - name: Download blob reports
-        uses: actions/download-artifact@v8
-        with:
-          path: .vitest-reports
-          pattern: blob-*
-          merge-multiple: true
-      - name: Merge reports & generate coverage
-        run: npx vitest run --merge-reports=.vitest-reports --coverage
+      - name: Run tests with coverage 🧪
+        run: npm run test:coverage
       - name: Report coverage to PR
+        if: always()
         uses: davelosert/vitest-coverage-report-action@v2
         with:
           json-summary-path: coverage/coverage-summary.json
