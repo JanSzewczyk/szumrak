@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.1.1](https://github.com/JanSzewczyk/szumrak/compare/v1.1.0...v1.1.1) (2026-07-13)
+
+### Bug Fixes
+
+* tolerate the model collapsing type/subject into one commit-block line ([3663b95](https://github.com/JanSzewczyk/szumrak/commit/3663b952d31978d0513b94121f60d70a4ef96cc4))
+
 ## [1.1.0](https://github.com/JanSzewczyk/szumrak/compare/v1.0.3...v1.1.0) (2026-07-13)
 
 ### Features
