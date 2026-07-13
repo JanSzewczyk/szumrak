@@ -67,12 +67,16 @@ npm start
 Validates environment isolation (missing binaries, paths, permissions).
 
 ```bash
-npm run dev:build
+npm run build
 
 TARGET_REPO_PATH=/path/to/local/target-repo \
 TASK="Add a unit test for the formatDate helper" \
 npm run dev:run
 ```
+
+`npm run build` builds the Docker image — it is also the check a PR-checks CI workflow should
+run to verify the image still builds (there is no `tsc` compile step; the image is the only build
+artifact this repo produces).
 
 The local checkout of the target repo is mounted as a volume — changes are
 visible immediately via `git diff` in that repo. `DRY_RUN=true` is set by default
