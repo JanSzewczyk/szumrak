@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.1.2](https://github.com/JanSzewczyk/szumrak/compare/v1.1.1...v1.1.2) (2026-07-13)
+
+### Bug Fixes
+
+* simplify branch name generation by removing prefix for commits without metadata ([f8405f4](https://github.com/JanSzewczyk/szumrak/commit/f8405f4a85acc2da94939b5ace0157b958132e1f))
+
 ## [1.1.1](https://github.com/JanSzewczyk/szumrak/compare/v1.1.0...v1.1.1) (2026-07-13)
 
 ### Bug Fixes
