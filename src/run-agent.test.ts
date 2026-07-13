@@ -250,6 +250,25 @@ describe("runAgent", () => {
     expect(result.finalMessage).toBe("I added a test file covering the edge cases.");
   });
 
+  test("tolerates the model collapsing 'type: <type>' and 'subject: ...' into one line", async () => {
+    const finalText = [
+      "```commit",
+      "test: add unit tests for getInitials function in utils/users.test.ts",
+      "branch: add-users-getinitials-tests",
+      "```"
+    ].join("\n");
+    mockedQuery.mockReturnValue(streamOf([resultMessage({ result: finalText })]) as never);
+
+    const result = await runAgent("task");
+
+    expect(result.commitMetadata).toEqual({
+      type: "test",
+      scope: undefined,
+      subject: "add unit tests for getInitials function in utils/users.test.ts".slice(0, 50),
+      branchSlug: "add-users-getinitials-tests"
+    });
+  });
+
   test("parses a commit block without a scope, omitting scope from commitMetadata", async () => {
     const finalText = [
       "```commit",

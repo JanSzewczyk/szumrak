@@ -71,16 +71,25 @@ function loadAgentPermissions(workspacePath: string): AgentPermissions {
 // real bug, not just cosmetic). Runs in the same turn as the edits, so it
 // costs no extra API call.
 const COMMIT_METADATA_INSTRUCTIONS = `
-When you have finished making all edits for this task, end your final response with exactly one fenced block in this exact format, describing the change you actually made (not the wording of the task):
+When you have finished making all edits for this task, end your final response with exactly one fenced block using these four field names literally, each on its own line. Keep "type" and "subject" as separate lines — do not collapse them into one "type: subject" line the way a real commit message reads.
 
 \`\`\`commit
-type: <one of feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert>
-scope: <short kebab-case scope, or omit this line if there is none>
+type: <feat|fix|chore|docs|style|refactor|perf|test|build|ci|revert — pick exactly one>
+scope: <short kebab-case scope, or delete this line if there is none>
 subject: <imperative mood, lowercase, no trailing period, at most 50 characters>
 branch: <kebab-case slug describing the change, at most 40 characters, no type prefix>
 \`\`\`
 
-If you made no changes, omit this block entirely.
+Example, for a change that added tests for a search-params helper:
+
+\`\`\`commit
+type: test
+scope: search-params
+subject: add unit tests for parseSearchParams
+branch: add-search-params-tests
+\`\`\`
+
+Describe the change you actually made, not the wording of the task. If you made no changes, omit this block entirely.
 `.trim();
 
 const COMMIT_BLOCK_PATTERN = /```commit\s*\n([\s\S]*?)```/;
@@ -96,6 +105,24 @@ function parseCommitMetadata(finalMessage: string): CommitMetadata | undefined {
     const fieldMatch = line.match(/^(type|scope|subject|branch):\s*(.+)$/);
     if (fieldMatch) {
       fields[fieldMatch[1]] = fieldMatch[2].trim();
+    }
+  }
+
+  // Tolerate the model collapsing "type: <type>" and "subject: <subject>"
+  // into a single conventional-commit-style line (e.g. a bare
+  // "test: add unit tests..." line instead of separate "type:"/"subject:"
+  // lines) — an easy mistake since that's what the final commit message is
+  // supposed to look like. Neither "type" nor "subject" matches the strict
+  // field regex above in that case, so scan every line for one that starts
+  // with a valid conventional commit type.
+  if (!fields.type || !CONVENTIONAL_COMMIT_TYPES.includes(fields.type as ConventionalCommitType)) {
+    for (const line of match[1].split("\n")) {
+      const collapsed = line.match(/^(\w+):\s*(.+)$/);
+      if (collapsed && CONVENTIONAL_COMMIT_TYPES.includes(collapsed[1] as ConventionalCommitType)) {
+        fields.type = collapsed[1];
+        fields.subject ??= collapsed[2];
+        break;
+      }
     }
   }
 
