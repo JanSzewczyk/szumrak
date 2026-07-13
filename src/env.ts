@@ -34,6 +34,11 @@ export const env = createEnv({
       .optional()
       .transform((value) => value === "true")
       .describe('When "true", skip commit/push/PR and leave changes on disk only'),
+    AGENT_MODEL: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Claude model alias (e.g. 'haiku', 'sonnet', 'opus') or full model ID for the agent to use"),
     MAX_TURNS: z.coerce
       .number()
       .int()

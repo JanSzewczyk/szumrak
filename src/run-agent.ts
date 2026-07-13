@@ -32,7 +32,8 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
     options: {
       cwd: env.WORKSPACE_PATH,
       permissionMode: "acceptEdits",
-      maxTurns: env.MAX_TURNS
+      maxTurns: env.MAX_TURNS,
+      model: env.AGENT_MODEL
     }
   });
 

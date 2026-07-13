@@ -167,6 +167,7 @@ from source.
 | `REPO` | yes when opening a PR | `owner/repo` of the target repository |
 | `GH_TOKEN` | yes when opening a PR | PAT with minimal scope |
 | `DRY_RUN` | no | `true` skips commit/push/PR, changes stay on disk only |
+| `AGENT_MODEL` | no (default: SDK default model) | Claude model alias (`haiku`, `sonnet`, `opus`) or full model ID |
 | `MAX_TURNS` | no (default `30`) | agent turn limit |
 | `MAX_DURATION_MS` | no (default `900000`) | run duration limit |
 | `AGENT_LOG_PATH` | no (default `<WORKSPACE_PATH>/agent-run.jsonl`) | JSONL log path |
