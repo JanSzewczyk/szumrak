@@ -1,5 +1,5 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { config } from "./config";
+import { env } from "./env";
 import { log } from "./lib/logger";
 
 export interface AgentToolCall {
@@ -30,9 +30,9 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
   const stream = query({
     prompt: task,
     options: {
-      cwd: config.workspacePath,
+      cwd: env.WORKSPACE_PATH,
       permissionMode: "acceptEdits",
-      maxTurns: config.maxTurns
+      maxTurns: env.MAX_TURNS
     }
   });
 
@@ -66,7 +66,7 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
       });
     }
 
-    if (Date.now() - startedAt > config.maxDurationMs) {
+    if (Date.now() - startedAt > env.MAX_DURATION_MS) {
       log("agent_timeout", { elapsedMs: Date.now() - startedAt });
       throw new Error("Agent exceeded max duration");
     }

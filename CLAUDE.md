@@ -44,18 +44,24 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
 `commitAndOpenPR(...)`.
 
 - **`run-agent.ts`** wraps the SDK `query()` stream. `permissionMode: "acceptEdits"`, `maxTurns`
-  from config, **no `skills` option** (the agent runs without skills — see below). It walks the
+  from `env`, **no `skills` option** (the agent runs without skills — see below). It walks the
   message stream: assistant tool-use/text blocks live under `message.message.content`; the final
   outcome is a `type: "result"` message where success is `subtype === "success" && !is_error` and
   the summary text is `message.result`. A wall-clock guard throws past `maxDurationMs`.
 - **`git.ts`** does branch → commit → push → PR create (via the Octokit client from
   `src/lib/github.ts`) → add `ai-generated` label. The agent itself never runs git; all git/PR
   work happens here, in Node, *after* the run.
-- **`config.ts`** centralises env-driven limits/constants. **`src/lib/logger.ts`** appends JSONL
-  events to `<WORKSPACE_PATH>/agent-run.jsonl` (this file is uploaded as a CI artifact).
+- **`env.ts`** is the single source of validated configuration: `@t3-oss/env-core` + Zod parse
+  `process.env` at import time (`emptyStringAsUndefined: true` so Docker/CI empty vars fall back to
+  defaults). Invalid config prints a readable list and `process.exit(1)` before the agent runs, so
+  a bad env never wastes an API turn. Import `env` from here — there is no `config.ts`.
+- **`src/lib/logger.ts`** appends JSONL events to `<WORKSPACE_PATH>/agent-run.jsonl` (uploaded as a
+  CI artifact).
 
-Config is entirely env-var driven: `TASK`, `WORKSPACE_PATH`, `REPO` (`owner/repo`), `GH_TOKEN`,
-`ANTHROPIC_API_KEY`, `DRY_RUN`, `MAX_TURNS`, `MAX_DURATION_MS`, `AGENT_LOG_PATH`. See README table.
+Config is entirely env-var driven and validated in `env.ts`: `TASK`, `WORKSPACE_PATH`, `REPO`
+(`owner/repo`), `GH_TOKEN`, `ANTHROPIC_API_KEY`, `DRY_RUN`, `MAX_TURNS`, `MAX_DURATION_MS`,
+`AGENT_LOG_PATH`. See README table and `.env.example`. `REPO`/`GH_TOKEN` are optional in the schema
+but required for real (non-`DRY_RUN`) runs — `index.ts` guards that upfront.
 
 ## Invariants — do not regress these
 
