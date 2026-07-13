@@ -1,0 +1,32 @@
+name: Release 🚀
+
+on:
+  push:
+    branches: [main]
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  release:
+    name: Release 🚀
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: Checkout code 📚
+        uses: actions/checkout@v6
+      - name: Set up Node.js 🟢
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - name: Install packages ⚙️
+        run: npm ci
+#      - name: Publish package 📦🚀
+#        run: npx semantic-release
+#        env:
+#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

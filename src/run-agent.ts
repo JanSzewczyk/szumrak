@@ -32,14 +32,14 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
     options: {
       cwd: env.WORKSPACE_PATH,
       permissionMode: "acceptEdits",
-      maxTurns: env.MAX_TURNS
+      maxTurns: env.MAX_TURNS,
+      model: env.AGENT_MODEL
     }
   });
 
   for await (const message of stream) {
-    log("agent_message", { type: message.type });
-
     if (message.type === "assistant") {
+      const textBlocks: string[] = [];
       for (const block of message.message.content) {
         if (block.type === "tool_use") {
           const toolCall = { name: block.name, input: block.input as Record<string, unknown> };
@@ -48,8 +48,14 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
         }
         if (block.type === "text") {
           finalMessage = block.text;
+          textBlocks.push(block.text);
         }
       }
+      log("agent_message", { type: message.type, text: textBlocks.join("\n") || undefined });
+    } else if (message.type === "user") {
+      log("agent_message", { type: message.type, content: message.message.content });
+    } else {
+      log("agent_message", { type: message.type, ...("subtype" in message ? { subtype: message.subtype } : {}) });
     }
 
     if (message.type === "result") {
@@ -62,7 +68,8 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
         subtype: message.subtype,
         isError: message.is_error,
         totalCostUsd: message.total_cost_usd,
-        numTurns: message.num_turns
+        numTurns: message.num_turns,
+        result: "result" in message ? message.result : undefined
       });
     }
 
@@ -72,7 +79,7 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
     }
   }
 
-  log("agent_end", { toolCallCount: toolCalls.length, succeeded });
+  log("agent_end", { toolCallCount: toolCalls.length, succeeded, finalMessage });
 
   return { toolCalls, finalMessage, succeeded, totalCostUsd };
 }

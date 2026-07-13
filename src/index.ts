@@ -24,6 +24,7 @@ async function main() {
     if (env.DRY_RUN) {
       log("dry_run_active", { note: "Changes are left on disk; no PR will be created." });
       console.log("DRY_RUN=true — changes left on disk, no commit or PR.");
+      console.log(`\nAgent result:\n${result.finalMessage}`);
       return;
     }
 

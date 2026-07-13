@@ -34,6 +34,11 @@ export const env = createEnv({
       .optional()
       .transform((value) => value === "true")
       .describe('When "true", skip commit/push/PR and leave changes on disk only'),
+    AGENT_MODEL: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Claude model alias (e.g. 'haiku', 'sonnet', 'opus') or full model ID for the agent to use"),
     MAX_TURNS: z.coerce
       .number()
       .int()
@@ -56,5 +61,10 @@ export const env = createEnv({
   // Docker/CI often pass unset vars as an empty string (`-e VAR=`); treat those
   // as absent so defaults and `.optional()` apply instead of failing `.min(1)`.
   emptyStringAsUndefined: true,
-  onValidationError: reportInvalidEnv
+  onValidationError: reportInvalidEnv,
+  // Lets unit tests import modules that transitively pull in `env` (git.ts,
+  // run-agent.ts, lib/logger.ts) without setting every required var or risking
+  // the process.exit(1) above. Set by vitest.config.ts; never set this in a
+  // real run — it defeats the whole point of validating configuration.
+  skipValidation: process.env.SKIP_ENV_VALIDATION === "true"
 });

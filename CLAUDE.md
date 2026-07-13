@@ -19,12 +19,16 @@ from source (`docker build`) inside the target repo's CI, rather than published 
 ## Commands
 
 ```bash
-npm start           # tsx src/index.ts — runs the agent (no build step)
+npm start           # tsx src/index.ts — runs the agent (no compile step)
 npm run typecheck   # tsc --noEmit (tsconfig is noEmit; Bundler resolution, extensionless imports)
-npm run dev:build   # docker build -t szumrak -f docker/Dockerfile .
-npm run dev:run     # docker run against $TARGET_REPO_PATH mounted at /workspace (DRY_RUN on)
+npm run build       # docker build -t szumrak -f docker/Dockerfile . — the CI "build" check
+npm run dev:run     # docker run against $TARGET_REPO_PATH mounted at /workspace (DRY_RUN on) — local only
 npm run biome:check # Biome lint+format check (biome:fix to autofix)
 ```
+
+`build` (not `dev:build`) on purpose: it is meant to run in the GH Actions PR-checks workflow, not
+just locally — the image is this repo's only build artifact (no `tsc` compile step exists).
+`dev:run` stays `dev:`-prefixed since it mounts `$TARGET_REPO_PATH` and is local-only.
 
 There is **no build step and no test suite**: the TypeScript source is run directly via
 **tsx** (locally and in Docker), so there is no `dist/`. `tsc` is typecheck-only (`noEmit`).

@@ -1,0 +1,95 @@
+name: PR Checks ✅
+
+on:
+  pull_request:
+
+env:
+  NODE_VERSION: "24"
+
+permissions:
+  pull-requests: write
+
+jobs:
+  build:
+    name: Build 🏗️
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code 📚
+        uses: actions/checkout@v6
+      - name: Set up Node 🟢
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - name: Install dependencies ⚙️
+        run: npm ci
+      - name: Build Check 🏗️
+        run: npm run build
+  #        env:
+  #          SOME_SECRET: ${{ secret.SOME_SECRET }}
+
+  biome:
+    name: Biome 🌿
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code 📚
+        uses: actions/checkout@v6
+      - name: Setup Biome 🌿
+        uses: biomejs/setup-biome@v2
+      - name: Biome Check 🌿
+        run: npm run biome:ci
+
+  type-check:
+    name: TypeScript 🛠️
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code 📚
+        uses: actions/checkout@v6
+      - name: Set up Node 🟢
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - name: Install dependencies ⚙️
+        run: npm ci
+      - name: TypeScript Check 🛠️
+        run: npm run typecheck
+
+  test:
+    name: Tests 🧪
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout code 📚
+        uses: actions/checkout@v6
+      - name: Set up Node.js 🟢
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+      - name: Install packages ⚙️
+        run: npm ci
+      - name: Run tests with coverage 🧪
+        run: npm run test:coverage
+      - name: Report coverage to PR
+        if: always()
+        uses: davelosert/vitest-coverage-report-action@v2
+        with:
+          json-summary-path: coverage/coverage-summary.json
+          json-final-path: coverage/coverage-final.json
+
+  dependency-review:
+    name: Dependency Review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Checkout code 📚
+        uses: actions/checkout@v6
+      - name: Dependency Review
+        uses: actions/dependency-review-action@v5
+        with:
+          comment-summary-in-pr: on-failure
