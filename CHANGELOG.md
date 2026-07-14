@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.7.1](https://github.com/JanSzewczyk/szumrak/compare/v1.7.0...v1.7.1) (2026-07-14)
+
+### Bug Fixes
+
+* retry review-followup as a fresh session when a stored session id can't be resumed ([4776b94](https://github.com/JanSzewczyk/szumrak/commit/4776b94f26d503a602c4441e770824cca0d5abea))
+
 ## [1.7.0](https://github.com/JanSzewczyk/szumrak/compare/v1.6.2...v1.7.0) (2026-07-14)
 
 ### Features
