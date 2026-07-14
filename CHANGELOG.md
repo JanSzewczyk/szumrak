@@ -3,6 +3,16 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.6.1](https://github.com/JanSzewczyk/szumrak/compare/v1.6.0...v1.6.1) (2026-07-14)
+
+### Bug Fixes
+
+* diffAgainstBase against origin/main, not a local 'main' branch ([5117456](https://github.com/JanSzewczyk/szumrak/commit/5117456dcbbf885629441079b7daf0d2979427e0))
+
+### Miscellaneous Chores
+
+* ignore *.pem files ([7a43aa0](https://github.com/JanSzewczyk/szumrak/commit/7a43aa05b23d73083b7ce9cc9337ad567add11ce))
+
 ## [1.6.0](https://github.com/JanSzewczyk/szumrak/compare/v1.5.0...v1.6.0) (2026-07-14)
 
 ### Features
