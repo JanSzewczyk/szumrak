@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.2.0](https://github.com/JanSzewczyk/szumrak/compare/v1.1.2...v1.2.0) (2026-07-14)
+
+### Features
+
+* redact secrets and cap logged string length in agent-run.jsonl ([71af9cc](https://github.com/JanSzewczyk/szumrak/commit/71af9cc05ea9c25a2eaa4bd16f2fa56818173377))
+
+### Bug Fixes
+
+* update branch-name assertions in git.test.ts for the removed agent/ prefix ([c01a1e6](https://github.com/JanSzewczyk/szumrak/commit/c01a1e642b1feb0238cac1afb6b96021dd0dc94d))
+
+### Miscellaneous Chores
+
+* remove unused BRANCH_PREFIX constant in git.ts ([92a46bc](https://github.com/JanSzewczyk/szumrak/commit/92a46bc42f616f5ef40bb9348b17f7fed09e1cf4))
+
 ## [1.1.2](https://github.com/JanSzewczyk/szumrak/compare/v1.1.1...v1.1.2) (2026-07-13)
 
 ### Bug Fixes
