@@ -4,9 +4,6 @@ import { env } from "./env";
 import { log } from "./lib/logger";
 import type { CommitMetadata } from "./run-agent";
 
-// Prefix for branches the agent creates.
-const BRANCH_PREFIX = "agent/";
-
 // A short suffix keeps branch names unique across runs that produce the same
 // type/slug (e.g. two "test/add-x-tests" runs on different days).
 function buildBranchName(commitMetadata: CommitMetadata | undefined): string {
