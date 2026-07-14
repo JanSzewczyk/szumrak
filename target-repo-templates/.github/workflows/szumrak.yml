@@ -77,11 +77,17 @@ jobs:
   review-followup:
     name: Szumrak Review Follow-up
     # Only follow up on PRs Szumrak itself opened, and only for feedback from
-    # an actual person — not another bot/Action reacting to the PR.
+    # an actual person — not another bot/Action reacting to the PR. Also skips
+    # a pull_request_review with no body: submitting a review with only inline
+    # comments (no overall summary) fires both pull_request_review_comment
+    # (handled, has the actual feedback) and pull_request_review with an empty
+    # body — without this guard the empty one runs too and fails on
+    # "REVIEW_FEEDBACK required" for no reason.
     if: |
       github.event_name != 'workflow_dispatch' &&
       contains(github.event.pull_request.labels.*.name, 'ai-generated') &&
-      github.event.sender.type == 'User'
+      github.event.sender.type == 'User' &&
+      (github.event_name != 'pull_request_review' || github.event.review.body)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # Same group as run-szumrak on purpose — a review follow-up and a fresh
