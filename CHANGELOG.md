@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.7.0](https://github.com/JanSzewczyk/szumrak/compare/v1.6.2...v1.7.0) (2026-07-14)
+
+### Features
+
+* enhance review follow-up with session management and cost tracking ([356e43f](https://github.com/JanSzewczyk/szumrak/commit/356e43f8b6aa8ec9be77bb1b50a09f1a93b73a4f))
+
 ## [1.6.2](https://github.com/JanSzewczyk/szumrak/compare/v1.6.1...v1.6.2) (2026-07-14)
 
 ### Bug Fixes
