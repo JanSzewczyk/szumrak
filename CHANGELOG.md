@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.7.3](https://github.com/JanSzewczyk/szumrak/compare/v1.7.2...v1.7.3) (2026-07-14)
+
+### Performance Improvements
+
+* **review-followup:** raise changed-file content caps to fit real source files ([9a892cf](https://github.com/JanSzewczyk/szumrak/commit/9a892cf5f78e69499d07de838f85fdf91e6c85b9))
+
 ## [1.7.2](https://github.com/JanSzewczyk/szumrak/compare/v1.7.1...v1.7.2) (2026-07-14)
 
 ### Performance Improvements

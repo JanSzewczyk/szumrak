@@ -1,6 +1,6 @@
 {
   "name": "szumrak",
-  "version": "1.7.2",
+  "version": "1.7.3",
   "private": true,
   "type": "module",
   "description": "Autonomous agent for performing narrow, highly verifiable tasks on target repositories.",
