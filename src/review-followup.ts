@@ -2,8 +2,9 @@ import { env } from "./env";
 import { checkoutExistingBranch, diffAgainstBase, pushFollowUpCommit } from "./git";
 import { octokit } from "./lib/github";
 import { log } from "./lib/logger";
+import { appendRunInfo, parseSzumrakMeta, type SzumrakMeta } from "./lib/run-info";
 import { writeStepSummary } from "./lib/summary";
-import { runAgent } from "./run-agent";
+import { type AgentRunResult, runAgent } from "./run-agent";
 
 // Hard cap on automatic review rounds per PR (Notion page 9) — without it, an
 // endless review -> fix -> new objections -> fix loop is possible. Tracked as
@@ -19,6 +20,28 @@ const ORIGINAL_TASK_PATTERN = /^Task:\n([\s\S]*?)\n\nGenerated automatically by 
 
 function extractOriginalTask(prBody: string): string {
   return prBody.match(ORIGINAL_TASK_PATTERN)?.[1] ?? "(original task unavailable — see PR description)";
+}
+
+// Best-effort — losing this metadata only means the next round won't resume
+// the prior session or show accurate cost history, not that the round itself
+// fails. Mirrors the label removal's own .catch(() => {}) below.
+async function updateSzumrakMeta(
+  owner: string,
+  repo: string,
+  prNumber: number,
+  prBody: string,
+  previousMeta: SzumrakMeta | undefined,
+  round: number,
+  result: AgentRunResult
+): Promise<void> {
+  const body = appendRunInfo(prBody, previousMeta, round, {
+    sessionId: result.sessionId,
+    totalCostUsd: result.totalCostUsd,
+    numTurns: result.numTurns
+  });
+  await octokit.pulls.update({ owner, repo, pull_number: prNumber, body }).catch((err) => {
+    log("szumrak_meta_update_failed", { prNumber, error: String(err) });
+  });
 }
 
 function getRoundCount(labels: Array<{ name?: string }>): number {
@@ -86,7 +109,13 @@ export async function runReviewFollowUp(
   const diff = diffAgainstBase();
   const followUpTask = buildFollowUpTask(branch, originalTask, diff, feedback);
 
-  const result = await runAgent(followUpTask);
+  // The flattened task/diff/feedback prompt above is always sent, resumed
+  // session or not — that's the safety net. If resume succeeds, the model
+  // gets full prior history plus a harmless recap; if the stored session id
+  // is missing, stale, or evicted server-side, the SDK just starts a fresh
+  // session and this prompt alone carries exactly the context it does today.
+  const meta = parseSzumrakMeta(pr.body ?? "");
+  const result = await runAgent(followUpTask, { resume: meta?.lastSessionId });
   if (!result.succeeded) {
     log("review_followup_failed", { prNumber, finalMessage: result.finalMessage });
     writeStepSummary(
@@ -99,6 +128,8 @@ export async function runReviewFollowUp(
     log("dry_run_active", { note: "Follow-up changes left on disk; no commit or push." });
     return { succeeded: true };
   }
+
+  await updateSzumrakMeta(owner, repo, prNumber, pr.body ?? "", meta, round + 1, result);
 
   const pushed = pushFollowUpCommit(originalTask, result.commitMetadata);
   if (!pushed) {

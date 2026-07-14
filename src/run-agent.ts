@@ -37,6 +37,16 @@ export interface AgentRunResult {
   succeeded: boolean;
   totalCostUsd?: number;
   commitMetadata?: CommitMetadata;
+  sessionId?: string;
+  numTurns?: number;
+}
+
+export interface AgentRunOptions {
+  // SDK session id to resume, so a review-followup round can continue the
+  // actual prior conversation instead of rebuilding context from a flattened
+  // task/diff/feedback prompt alone. Omitted (or invalid/expired session-side)
+  // is a no-op — the SDK just starts a fresh session, so this is purely additive.
+  resume?: string;
 }
 
 interface AgentPermissions {
@@ -164,11 +174,13 @@ function loadClaudeMd(workspacePath: string): string | undefined {
 // Commit/push/PR happens separately in git.ts after the run finishes — the agent
 // never runs `git push`/`gh pr create` itself, so permissionMode "acceptEdits"
 // (auto-accept file edits) is enough without opening up Bash.
-export async function runAgent(task: string): Promise<AgentRunResult> {
+export async function runAgent(task: string, options: AgentRunOptions = {}): Promise<AgentRunResult> {
   const toolCalls: Array<AgentToolCall> = [];
   let finalMessage = "";
   let succeeded = false;
   let totalCostUsd: number | undefined;
+  let sessionId: string | undefined;
+  let numTurns: number | undefined;
   const startedAt = Date.now();
 
   log("agent_start", {
@@ -190,6 +202,7 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
       permissionMode: "acceptEdits",
       maxTurns: env.MAX_TURNS,
       model: env.AGENT_MODEL,
+      resume: options.resume,
       allowedTools: permissions.allow,
       disallowedTools: permissions.deny,
       // Never load the target repo's .claude/settings.json or
@@ -237,6 +250,7 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
     } else if (message.type === "user") {
       log("agent_message", { type: message.type, content: message.message.content });
     } else if (message.type === "system" && "subtype" in message && message.subtype === "init") {
+      sessionId = message.session_id;
       log("agent_init", {
         model: message.model,
         claudeCodeVersion: message.claude_code_version,
@@ -254,6 +268,8 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
     if (message.type === "result") {
       succeeded = message.subtype === "success" && !message.is_error;
       totalCostUsd = message.total_cost_usd;
+      sessionId = message.session_id ?? sessionId;
+      numTurns = message.num_turns;
       if ("result" in message && typeof message.result === "string") {
         finalMessage = message.result;
       }
@@ -279,5 +295,5 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
 
   log("agent_end", { toolCallCount: toolCalls.length, succeeded, finalMessage: displayMessage, commitMetadata });
 
-  return { toolCalls, finalMessage: displayMessage, succeeded, totalCostUsd, commitMetadata };
+  return { toolCalls, finalMessage: displayMessage, succeeded, totalCostUsd, commitMetadata, sessionId, numTurns };
 }
