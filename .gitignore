@@ -6,6 +6,7 @@ agent-run.jsonl
 .env
 .env.*
 !.env.example
+*.pem
 .DS_Store
 .idea/
 
