@@ -69,8 +69,14 @@ export async function checkoutExistingBranch(owner: string, repo: string, branch
   git(["pull", "origin", branch]);
 }
 
-const MAX_FILE_CONTENT = 8000;
-const MAX_TOTAL_CONTENT = 20000;
+// Generous on purpose: a file the agent would otherwise Read costs the same
+// tokens whether they arrive in this prompt or in a Read tool-result, so the
+// only thing these caps guard against is a pathological blob (a lockfile, a
+// generated bundle) — not ordinary source/test files, which routinely run past
+// 10k chars. A 314-line test file (~11k chars) is normal, so an 8k cap defeated
+// the point (it got annotated as truncated and re-Read anyway).
+const MAX_FILE_CONTENT = 24000;
+const MAX_TOTAL_CONTENT = 48000;
 
 // Included in the review-followup prompt so the model can address feedback
 // without re-reading the files it already changed — each Read it can skip is a

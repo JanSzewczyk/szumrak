@@ -336,13 +336,13 @@ describe("changedFilesWithContent", () => {
   });
 
   test("annotates a file over the per-file cap as truncated instead of inlining it", () => {
-    mockGit(["big.ts"], { "big.ts": "x".repeat(9000) });
+    mockGit(["big.ts"], { "big.ts": "x".repeat(25000) });
 
     const result = changedFilesWithContent();
 
     expect(result).toContain("### big.ts");
     expect(result).toContain("[truncated — Read the file for full content]");
-    expect(result).not.toContain("x".repeat(9000));
+    expect(result).not.toContain("x".repeat(25000));
   });
 
   test("marks a deleted file (no HEAD blob) instead of throwing", () => {
