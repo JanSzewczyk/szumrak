@@ -8,6 +8,13 @@
 //    otherwise falls back to join(env.WORKSPACE_PATH, "agent-run.jsonl"). Verified via
 //    two isolated module loads (vi.resetModules + dynamic import) since LOG_PATH is
 //    computed once at import time.
+// 6. Strings matching known secret patterns (sk-ant-, AKIA, ghp_, PEM private key
+//    blocks, etc.) are replaced with "[REDACTED]", including when nested inside
+//    arrays/objects.
+// 7. Strings longer than the length cap are truncated with a "[truncated, N chars
+//    total]" suffix instead of being logged in full (e.g. a Write tool's file content).
+// 8. Short strings and non-string values (numbers, booleans, null) pass through
+//    unchanged.
 
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
@@ -90,6 +97,53 @@ describe("logger", () => {
 
       expect(() => log("agent_end", { succeeded: true })).not.toThrow();
       expect(consoleSpy).toHaveBeenCalledTimes(1);
+
+      consoleSpy.mockRestore();
+    });
+
+    test.each([
+      ["Anthropic key", "sk-ant-api03-abc123def456ghi789"],
+      ["AWS access key", "AKIAABCDEFGHIJKLMNOP"],
+      ["GitHub PAT (classic prefix)", "ghp_abcdefghijklmnopqrstuvwxyz012345678"],
+      ["GitHub fine-grained PAT", "github_pat_11ABCDEFG0abcdefghijklmnop_qrstuvwxyz0123456789"],
+      ["Google API key", "AIzaSyAbcdefghijklmnopqrstuvwxyz012345"],
+      ["Slack token", ["xoxb", "1234567890", "abcdefghijklmnop"].join("-")],
+      ["PEM private key block", "-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJBAK\n-----END RSA PRIVATE KEY-----"]
+    ])("redacts a %s found anywhere in the logged data", async (_label, secret) => {
+      const { log } = await import("~/lib/logger");
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      log("tool_call", { input: { nested: [{ content: `before ${secret} after` }] } });
+
+      const written = JSON.parse(consoleSpy.mock.calls[0]?.[0] as string);
+      expect(JSON.stringify(written)).not.toContain(secret);
+      expect(written.input.nested[0].content).toBe("before [REDACTED] after");
+
+      consoleSpy.mockRestore();
+    });
+
+    test("truncates strings longer than the length cap instead of logging full file content", async () => {
+      const { log } = await import("~/lib/logger");
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const fullFileContent = "x".repeat(1000);
+
+      log("tool_call", { input: { file_path: "src/foo.ts", content: fullFileContent } });
+
+      const written = JSON.parse(consoleSpy.mock.calls[0]?.[0] as string);
+      expect(written.input.file_path).toBe("src/foo.ts");
+      expect(written.input.content).toBe(`${"x".repeat(500)}... [truncated, 1000 chars total]`);
+
+      consoleSpy.mockRestore();
+    });
+
+    test("leaves short strings and non-string values unchanged", async () => {
+      const { log } = await import("~/lib/logger");
+      const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      log("tool_call", { input: { path: "src/foo.ts", count: 3, ok: true, missing: null } });
+
+      const written = JSON.parse(consoleSpy.mock.calls[0]?.[0] as string);
+      expect(written.input).toEqual({ path: "src/foo.ts", count: 3, ok: true, missing: null });
 
       consoleSpy.mockRestore();
     });
