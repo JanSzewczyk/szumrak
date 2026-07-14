@@ -39,6 +39,27 @@ jobs:
           fetch-depth: 0
           path: workspace
 
+      # Pre-install the target repo's deps into the mounted workspace so the
+      # agent can run the repo's test/type-check scripts to self-verify, instead
+      # of burning turns trying to `npm install` inside the container (the
+      # mounted /workspace has no node_modules otherwise). Set node-version to
+      # match the szumrak image (node:24-slim) so node_modules are ABI-compatible
+      # with the node that runs the tests inside the container. Best-effort
+      # (continue-on-error) so a non-npm target repo or an install hiccup never
+      # blocks PR creation — the agent just falls back to not self-verifying.
+      # Adjust or remove these two steps if your target repo isn't npm-based.
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: workspace/package-lock.json
+
+      - name: Install target repo dependencies
+        working-directory: workspace
+        continue-on-error: true
+        run: npm ci
+
       - name: Checkout szumrak
         uses: actions/checkout@v7
         with:
@@ -101,6 +122,27 @@ jobs:
         with:
           fetch-depth: 0
           path: workspace
+
+      # Pre-install the target repo's deps into the mounted workspace so the
+      # agent can run the repo's test/type-check scripts to self-verify, instead
+      # of burning turns trying to `npm install` inside the container (the
+      # mounted /workspace has no node_modules otherwise). Set node-version to
+      # match the szumrak image (node:24-slim) so node_modules are ABI-compatible
+      # with the node that runs the tests inside the container. Best-effort
+      # (continue-on-error) so a non-npm target repo or an install hiccup never
+      # blocks PR creation — the agent just falls back to not self-verifying.
+      # Adjust or remove these two steps if your target repo isn't npm-based.
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: workspace/package-lock.json
+
+      - name: Install target repo dependencies
+        working-directory: workspace
+        continue-on-error: true
+        run: npm ci
 
       - name: Checkout szumrak
         uses: actions/checkout@v7
