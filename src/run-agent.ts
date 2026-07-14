@@ -206,7 +206,15 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
       systemPrompt: {
         type: "preset",
         preset: "claude_code",
-        append: claudeMd ? `${claudeMd}\n\n${COMMIT_METADATA_INSTRUCTIONS}` : COMMIT_METADATA_INSTRUCTIONS
+        append: claudeMd ? `${claudeMd}\n\n${COMMIT_METADATA_INSTRUCTIONS}` : COMMIT_METADATA_INSTRUCTIONS,
+        // Strips per-run dynamic sections (cwd, git status, auto-memory path)
+        // out of the system prompt and re-injects them as the first user
+        // message instead, so the static prefix (CLAUDE.md + commit-metadata
+        // instructions) is byte-identical across independent runs and can hit
+        // Anthropic's prompt cache cross-session — not just across turns
+        // within one run, which already share a stable prefix regardless.
+        // Free to enable: on a cache miss this behaves exactly as before.
+        excludeDynamicSections: true
       }
     }
   });

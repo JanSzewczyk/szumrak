@@ -97,6 +97,20 @@ describe("runAgent", () => {
     });
   });
 
+  test("sets excludeDynamicSections so the static system-prompt prefix stays cross-run cacheable", async () => {
+    mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+
+    await runAgent("task");
+
+    expect(mockedQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({
+          systemPrompt: expect.objectContaining({ excludeDynamicSections: true })
+        })
+      })
+    );
+  });
+
   test("collects tool_use blocks into toolCalls in stream order", async () => {
     mockedQuery.mockReturnValue(
       streamOf([
