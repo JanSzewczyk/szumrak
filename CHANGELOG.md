@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.3.0](https://github.com/JanSzewczyk/szumrak/compare/v1.2.0...v1.3.0) (2026-07-14)
+
+### Features
+
+* write failure summaries to GITHUB_STEP_SUMMARY ([ee490bf](https://github.com/JanSzewczyk/szumrak/commit/ee490bf7e84550b5ec69c1db0c7caa525b925b61))
+
 ## [1.2.0](https://github.com/JanSzewczyk/szumrak/compare/v1.1.2...v1.2.0) (2026-07-14)
 
 ### Features
