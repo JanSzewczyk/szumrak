@@ -111,6 +111,36 @@ describe("runAgent", () => {
     );
   });
 
+  test("passes options.resume through to query() as the SDK's resume option", async () => {
+    mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+
+    await runAgent("task", { resume: "session-abc" });
+
+    expect(mockedQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({ resume: "session-abc" })
+      })
+    );
+  });
+
+  test("captures session_id from the init message into the returned result", async () => {
+    mockedQuery.mockReturnValue(
+      streamOf([{ type: "system", subtype: "init", session_id: "session-from-init" }, resultMessage()]) as never
+    );
+
+    const result = await runAgent("task");
+
+    expect(result.sessionId).toBe("session-from-init");
+  });
+
+  test("captures session_id from the result message", async () => {
+    mockedQuery.mockReturnValue(streamOf([resultMessage({ session_id: "session-from-result" })]) as never);
+
+    const result = await runAgent("task");
+
+    expect(result.sessionId).toBe("session-from-result");
+  });
+
   test("collects tool_use blocks into toolCalls in stream order", async () => {
     mockedQuery.mockReturnValue(
       streamOf([

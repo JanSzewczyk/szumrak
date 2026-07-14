@@ -2,6 +2,7 @@ import { env } from "./env";
 import { commitAndOpenPR, parseRepo } from "./git";
 import { findOpenPRForTask } from "./lib/dedup";
 import { log } from "./lib/logger";
+import { appendRunInfo } from "./lib/run-info";
 import { writeStepSummary } from "./lib/summary";
 import { runReviewFollowUp } from "./review-followup";
 import { runAgent } from "./run-agent";
@@ -67,11 +68,18 @@ async function main() {
       return;
     }
 
-    const prUrl = await commitAndOpenPR(
-      task.slice(0, 72),
+    // Adds a visible "Szumrak run info" cost/round table plus a trailing,
+    // invisible szumrak-meta comment so the first review-followup round can
+    // both show a reviewer what this run cost and resume its SDK session
+    // instead of rebuilding context from scratch — see lib/run-info.ts.
+    const body = appendRunInfo(
       `Task:\n${task}\n\nGenerated automatically by Szumrak.\n\nModel summary:\n${result.finalMessage}`,
-      result.commitMetadata
+      undefined,
+      0,
+      { sessionId: result.sessionId, totalCostUsd: result.totalCostUsd, numTurns: result.numTurns }
     );
+
+    const prUrl = await commitAndOpenPR(task.slice(0, 72), body, result.commitMetadata);
 
     if (prUrl) {
       console.log(`PR created: ${prUrl}`);
