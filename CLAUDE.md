@@ -22,6 +22,7 @@ from source (`docker build`) inside the target repo's CI, rather than published 
 ```bash
 npm start           # tsx src/index.ts — runs the agent (no compile step)
 npm run typecheck   # tsc --noEmit (tsconfig is noEmit; Bundler resolution, extensionless imports)
+npm test            # vitest run — unit tests for src/**/*.test.ts
 npm run build       # docker build -t szumrak -f docker/Dockerfile . — the CI "build" check
 npm run dev:run     # docker run against $TARGET_REPO_PATH mounted at /workspace (DRY_RUN on) — local only
 npm run biome:check # Biome lint+format check (biome:fix to autofix)
@@ -31,11 +32,14 @@ npm run biome:check # Biome lint+format check (biome:fix to autofix)
 just locally — the image is this repo's only build artifact (no `tsc` compile step exists).
 `dev:run` stays `dev:`-prefixed since it mounts `$TARGET_REPO_PATH` and is local-only.
 
-There is **no build step and no test suite**: the TypeScript source is run directly via
-**tsx** (locally and in Docker), so there is no `dist/`. `tsc` is typecheck-only (`noEmit`).
-Lint/format is **Biome** — it strips `.js` extensions from relative imports, which is why the
-tsconfig uses `module: "ESNext"` + `moduleResolution: "Bundler"`; do not reintroduce NodeNext or
-`.js` import extensions (they fight Biome and break the build). Verification is `npm run typecheck`.
+There is **no compile/build step for the source itself**: the TypeScript is run directly via
+**tsx** (locally and in Docker), so there is no `dist/`. `tsc` is typecheck-only (`noEmit`). There
+**is** a Vitest suite (`src/**/*.test.ts`, run via `npm test`) — verification for a change is
+`npm run typecheck && npm test && npm run biome:check`. Tests set `SKIP_ENV_VALIDATION=true`
+(`vitest.config.ts`) so modules that import `env` don't need every required var set or risk the
+fail-fast `process.exit(1)` in `env.ts`. Lint/format is **Biome** — it strips `.js` extensions from
+relative imports, which is why the tsconfig uses `module: "ESNext"` + `moduleResolution: "Bundler"`;
+do not reintroduce NodeNext or `.js` import extensions (they fight Biome and break the build).
 
 Running the agent locally (Level 1, fastest loop — see README for Levels 2/3):
 
@@ -63,18 +67,31 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   throws.
 - **`git.ts`** does branch → commit → push → PR create (via the Octokit client from
   `src/lib/github.ts`) → add `ai-generated` label. The agent itself never runs git; all git/PR
-  work happens here, in Node, *after* the run.
+  work happens here, in Node, *after* the run. Branch name and commit message are driven by the
+  agent's own self-reported `CommitMetadata` (type/scope/subject/branch) when present — see below —
+  falling back to `chore(agent): <task text>` when it's missing or unparsable.
+- **`run-agent.ts`** also has the agent end its final response with a fenced ` ```commit ` block
+  (Conventional Commits type/scope/subject/branch), appended to the system prompt via
+  `COMMIT_METADATA_INSTRUCTIONS`. `parseCommitMetadata()` extracts it (with a fallback for the model
+  collapsing `type:`/`subject:` onto one line) and strips it from the human-facing `finalMessage`.
+  This exists so the target repo's semantic-release parses a real commit type, not an always-`chore`
+  placeholder.
 - **`env.ts`** is the single source of validated configuration: `@t3-oss/env-core` + Zod parse
   `process.env` at import time (`emptyStringAsUndefined: true` so Docker/CI empty vars fall back to
   defaults). Invalid config prints a readable list and `process.exit(1)` before the agent runs, so
   a bad env never wastes an API turn. Import `env` from here — there is no `config.ts`.
 - **`src/lib/logger.ts`** appends JSONL events to `<WORKSPACE_PATH>/agent-run.jsonl` (uploaded as a
-  CI artifact).
+  CI artifact) — see the secret-redaction invariant below.
+- **`src/lib/summary.ts`** (`writeStepSummary`) writes failure-only lines to `GITHUB_STEP_SUMMARY`
+  when set, so a failed run is visible on the target repo's GH Actions job summary page without an
+  `issue_comment` trigger to post a PR/issue comment against (see Notion page 14 vs. the current
+  `workflow_dispatch`-only trigger). Success stays a silent `ai-generated` PR + label.
 
 Config is entirely env-var driven and validated in `env.ts`: `TASK`, `WORKSPACE_PATH`, `REPO`
-(`owner/repo`), `GH_TOKEN`, `ANTHROPIC_API_KEY`, `DRY_RUN`, `MAX_TURNS`, `MAX_DURATION_MS`,
-`AGENT_LOG_PATH`. See README table and `.env.example`. `REPO`/`GH_TOKEN` are optional in the schema
-but required for real (non-`DRY_RUN`) runs — `index.ts` guards that upfront.
+(`owner/repo`), `GH_TOKEN`, `ANTHROPIC_API_KEY`, `DRY_RUN`, `AGENT_MODEL`, `MAX_TURNS`,
+`MAX_DURATION_MS`, `AGENT_LOG_PATH`, `TARGET_REPO_PATH` (local-only, used by `dev:run`). See README
+table and `.env.example`. `REPO`/`GH_TOKEN` are optional in the schema but required for real
+(non-`DRY_RUN`) runs — `index.ts` guards that upfront.
 
 ## Invariants — do not regress these
 
@@ -88,6 +105,13 @@ but required for real (non-`DRY_RUN`) runs — `index.ts` guards that upfront.
 - **The agent runs without any skills right now, by design.** The SDK `skills` option is omitted
   and there is no skill-validation code. `storybook-testing` seen in the Notion history was only a
   planning example; don't reintroduce a skills layer unless explicitly asked.
+- **`logger.ts` redacts secret patterns and truncates long strings before anything is written.**
+  `agent-run.jsonl` is uploaded as a CI artifact readable by anyone with repo/Actions access, so
+  `sanitizeValue()` (regexes for `sk-ant-`, `AKIA`, `ghp_`/`github_pat_`, Google/Slack keys, PEM
+  blocks; 500-char truncation) runs on every logged value. Don't bypass `log()` with a raw
+  `console.log`/`appendFileSync` for tool inputs/outputs, and don't remove this when touching the
+  logger — it's the only thing standing between a hardcoded key the agent reads and a public-ish CI
+  artifact.
 
 ## Docs & language
 
