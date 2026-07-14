@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.6.0](https://github.com/JanSzewczyk/szumrak/compare/v1.5.0...v1.6.0) (2026-07-14)
+
+### Features
+
+* authenticate as a GitHub App instead of a personal PAT ([c1bdbec](https://github.com/JanSzewczyk/szumrak/commit/c1bdbecc5eb24bb04edaaac94244e669b15ea2ec))
+
 ## [1.5.0](https://github.com/JanSzewczyk/szumrak/compare/v1.4.0...v1.5.0) (2026-07-14)
 
 ### Features
