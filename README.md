@@ -151,9 +151,9 @@ are visible immediately via `git diff` in that repo. `DRY_RUN=true` is set by de
 
 ### Level 3 — Full Cycle in GitHub Actions
 
-Only once the logic works at Level 1 and Level 2 — driven by a `.github/workflows/agent.yml`
+Only once the logic works at Level 1 and Level 2 — driven by a `.github/workflows/szumrak.yml`
 in the **target** repository (not this one), which checks out both repos and builds the image
-from source.
+from source. See `target-repo-templates/.github/workflows/szumrak.yml` for a reference copy.
 
 ---
 
