@@ -10,7 +10,7 @@
 //    72 chars>" for both the commit message and PR title (title == commit message,
 //    since GitHub squash-merge uses the PR title as the final commit that
 //    semantic-release parses).
-// 5. With commitMetadata: branch is agent/<type>/<slug>-<suffix>, commit message and
+// 5. With commitMetadata: branch is <type>/<slug>-<suffix>, commit message and
 //    PR title are "<type>(<scope>): <subject>" (scope omitted when absent).
 // 6. The remote is reauthenticated via an embedded token (`configureGitRemoteAuth`)
 //    before anything else, and that call is never routed through the logging git()
@@ -74,7 +74,7 @@ describe("commitAndOpenPR", () => {
       const argv = args as Array<string>;
       if (argv[0] === "checkout") {
         expect(argv[1]).toBe("-b");
-        expect(argv[2]).toMatch(/^agent\/[a-z0-9]+$/);
+        expect(argv[2]).toMatch(/^[a-z0-9]+$/);
       }
       if (argv[0] === "status") return "";
       return "";
@@ -169,7 +169,7 @@ describe("commitAndOpenPR", () => {
     mockedExecFileSync.mockImplementation((_cmd, args) => {
       const argv = args as Array<string>;
       if (argv[0] === "checkout") {
-        expect(argv[2]).toMatch(/^agent\/test\/add-search-params-tests-[a-z0-9]+$/);
+        expect(argv[2]).toMatch(/^test\/add-search-params-tests-[a-z0-9]+$/);
       }
       if (argv[0] === "status") return " M utils/search-params.test.ts\n";
       return "";
