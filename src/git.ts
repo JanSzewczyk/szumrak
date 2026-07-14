@@ -74,8 +74,11 @@ const MAX_DIFF_LENGTH = 4000;
 // Included in the review-followup prompt so the model sees the scope of its
 // own prior changes without re-reading the whole repo. Truncated for the same
 // reason logger.ts truncates long strings — a huge diff is more prompt noise
-// than a diff summary would be.
-export function diffAgainstBase(baseBranch = "main"): string {
+// than a diff summary would be. Defaults to the remote-tracking ref, not a
+// bare "main": actions/checkout leaves HEAD detached with no local branch
+// named "main" (only refs/remotes/origin/main), which a real CI run hit and
+// a local test with an actual local "main" branch didn't catch.
+export function diffAgainstBase(baseBranch = "origin/main"): string {
   const diff = git(["diff", `${baseBranch}...HEAD`]);
   if (diff.length <= MAX_DIFF_LENGTH) {
     return diff;

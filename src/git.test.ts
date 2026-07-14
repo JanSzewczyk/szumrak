@@ -294,13 +294,13 @@ describe("diffAgainstBase", () => {
     process.env.WORKSPACE_PATH = "/workspace";
   });
 
-  test("returns the diff against the default base branch (main)", () => {
+  test("returns the diff against the default base branch (origin/main)", () => {
     mockedExecFileSync.mockReturnValue("diff --git a/foo.ts b/foo.ts\n+added line\n");
 
     const diff = diffAgainstBase();
 
     expect(diff).toBe("diff --git a/foo.ts b/foo.ts\n+added line\n");
-    expect(mockedExecFileSync).toHaveBeenCalledWith("git", ["diff", "main...HEAD"], expect.anything());
+    expect(mockedExecFileSync).toHaveBeenCalledWith("git", ["diff", "origin/main...HEAD"], expect.anything());
   });
 
   test("truncates a diff longer than the length cap", () => {
