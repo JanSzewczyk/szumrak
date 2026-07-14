@@ -186,41 +186,14 @@ describe("runReviewFollowUp", () => {
     expect(followUpTask).toContain("original task unavailable");
   });
 
-  test("resumes the stored SDK session when the PR body has a szumrak-meta comment", async () => {
-    mockedPullsGet.mockResolvedValue({
-      data: pr({ body: `${pr().body}\n\n<!-- szumrak-meta:{"v":1,"lastSessionId":"session-123","rounds":[]} -->` })
-    } as never);
-
-    await runReviewFollowUp("acme", "widgets", 42, "feedback");
-
-    expect(mockedRunAgent.mock.calls[0]?.[1]).toEqual({ resume: "session-123" });
-  });
-
-  test("omits resume when the PR body has no szumrak-meta comment", async () => {
-    mockedPullsGet.mockResolvedValue({ data: pr() } as never);
-
-    await runReviewFollowUp("acme", "widgets", 42, "feedback");
-
-    expect(mockedRunAgent.mock.calls[0]?.[1]).toEqual({ resume: undefined });
-  });
-
-  test("omits resume without throwing when the szumrak-meta comment is malformed", async () => {
-    mockedPullsGet.mockResolvedValue({
-      data: pr({ body: `${pr().body}\n\n<!-- szumrak-meta:not-json -->` })
-    } as never);
-
-    await runReviewFollowUp("acme", "widgets", 42, "feedback");
-
-    expect(mockedRunAgent.mock.calls[0]?.[1]).toEqual({ resume: undefined });
-  });
-
-  test("writes the new session id back to the PR body via pulls.update after a successful round", async () => {
+  test("writes the cost/round table back to the PR body via pulls.update after a successful round", async () => {
     mockedPullsGet.mockResolvedValue({ data: pr() } as never);
     mockedRunAgent.mockResolvedValue({
       toolCalls: [],
       finalMessage: "Addressed the feedback",
       succeeded: true,
-      sessionId: "session-456",
+      totalCostUsd: 0.12,
+      numTurns: 4,
       commitMetadata: { type: "fix", subject: "address review feedback", branchSlug: "add-x-tests" }
     });
 
@@ -229,7 +202,8 @@ describe("runReviewFollowUp", () => {
     expect(mockedPullsUpdate).toHaveBeenCalledTimes(1);
     const updateBody = mockedPullsUpdate.mock.calls[0]?.[0]?.body as string;
     expect(updateBody).toMatch(/^Task:\n[\s\S]*?\n\nGenerated automatically by Szumrak\./);
-    expect(updateBody).toContain('"lastSessionId":"session-456"');
+    expect(updateBody).toContain("**Szumrak run info**");
+    expect(updateBody).toContain('"totalCostUsd":0.12');
   });
 
   test("does not fail the round when pulls.update rejects", async () => {
@@ -238,7 +212,8 @@ describe("runReviewFollowUp", () => {
       toolCalls: [],
       finalMessage: "Addressed the feedback",
       succeeded: true,
-      sessionId: "session-456",
+      totalCostUsd: 0.12,
+      numTurns: 4,
       commitMetadata: { type: "fix", subject: "address review feedback", branchSlug: "add-x-tests" }
     });
     mockedPullsUpdate.mockRejectedValue(new Error("API hiccup"));

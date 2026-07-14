@@ -22,9 +22,9 @@ function extractOriginalTask(prBody: string): string {
   return prBody.match(ORIGINAL_TASK_PATTERN)?.[1] ?? "(original task unavailable — see PR description)";
 }
 
-// Best-effort — losing this metadata only means the next round won't resume
-// the prior session or show accurate cost history, not that the round itself
-// fails. Mirrors the label removal's own .catch(() => {}) below.
+// Best-effort — losing this metadata only means the cost/round table in the PR
+// body won't show this round, not that the round itself fails. Mirrors the
+// label removal's own .catch(() => {}) below.
 async function updateSzumrakMeta(
   owner: string,
   repo: string,
@@ -35,7 +35,6 @@ async function updateSzumrakMeta(
   result: AgentRunResult
 ): Promise<void> {
   const body = appendRunInfo(prBody, previousMeta, round, {
-    sessionId: result.sessionId,
     totalCostUsd: result.totalCostUsd,
     numTurns: result.numTurns
   });
@@ -109,13 +108,14 @@ export async function runReviewFollowUp(
   const filesContent = changedFilesWithContent();
   const followUpTask = buildFollowUpTask(branch, originalTask, filesContent, feedback);
 
-  // The flattened task/diff/feedback prompt above is always sent, resumed
-  // session or not — that's the safety net. If resume succeeds, the model
-  // gets full prior history plus a harmless recap; if the stored session id
-  // is missing, stale, or evicted server-side, the SDK just starts a fresh
-  // session and this prompt alone carries exactly the context it does today.
-  const meta = parseSzumrakMeta(pr.body ?? "");
-  const result = await runAgent(followUpTask, { resume: meta?.lastSessionId });
+  // Each round rebuilds context from the flattened original task + current
+  // changed-file content + feedback. (SDK session resume was tried and dropped:
+  // every review-followup round runs in a fresh `docker run --rm` container, so
+  // there's no local session state to resume — it always failed and fell back
+  // to this anyway.) parseSzumrakMeta is still read, but only to carry the
+  // cost/round table forward across rounds.
+  const previousMeta = parseSzumrakMeta(pr.body ?? "");
+  const result = await runAgent(followUpTask);
   if (!result.succeeded) {
     log("review_followup_failed", { prNumber, finalMessage: result.finalMessage });
     writeStepSummary(
@@ -129,7 +129,7 @@ export async function runReviewFollowUp(
     return { succeeded: true };
   }
 
-  await updateSzumrakMeta(owner, repo, prNumber, pr.body ?? "", meta, round + 1, result);
+  await updateSzumrakMeta(owner, repo, prNumber, pr.body ?? "", previousMeta, round + 1, result);
 
   const pushed = pushFollowUpCommit(originalTask, result.commitMetadata);
   if (!pushed) {

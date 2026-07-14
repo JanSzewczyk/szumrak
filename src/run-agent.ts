@@ -37,16 +37,7 @@ export interface AgentRunResult {
   succeeded: boolean;
   totalCostUsd?: number;
   commitMetadata?: CommitMetadata;
-  sessionId?: string;
   numTurns?: number;
-}
-
-export interface AgentRunOptions {
-  // SDK session id to resume, so a review-followup round can continue the
-  // actual prior conversation instead of rebuilding context from a flattened
-  // task/diff/feedback prompt alone. Omitted (or invalid/expired session-side)
-  // is a no-op — the SDK just starts a fresh session, so this is purely additive.
-  resume?: string;
 }
 
 interface AgentPermissions {
@@ -170,17 +161,26 @@ function loadClaudeMd(workspacePath: string): string | undefined {
   }
 }
 
-// Runs one query() stream to completion. Split out of runAgent() so a resume
-// that the SDK rejects outright (see runAgent's retry below) can be retried
-// as a fresh session without duplicating the whole message-loop.
-async function executeQuery(task: string, resume: string | undefined): Promise<AgentRunResult> {
+// The agent edits files through the SDK's built-in tools (Read/Edit/Grep/Glob).
+// Commit/push/PR happens separately in git.ts after the run finishes — the agent
+// never runs `git push`/`gh pr create` itself, so permissionMode "acceptEdits"
+// (auto-accept file edits) is enough without opening up Bash.
+export async function runAgent(task: string): Promise<AgentRunResult> {
   const toolCalls: Array<AgentToolCall> = [];
   let finalMessage = "";
   let succeeded = false;
   let totalCostUsd: number | undefined;
-  let sessionId: string | undefined;
   let numTurns: number | undefined;
   const startedAt = Date.now();
+
+  log("agent_start", {
+    task,
+    workspacePath: env.WORKSPACE_PATH,
+    requestedModel: env.AGENT_MODEL ?? "default",
+    maxTurns: env.MAX_TURNS,
+    maxDurationMs: env.MAX_DURATION_MS,
+    nodeVersion: process.version
+  });
 
   const permissions = loadAgentPermissions(env.WORKSPACE_PATH);
   const claudeMd = loadClaudeMd(env.WORKSPACE_PATH);
@@ -192,7 +192,6 @@ async function executeQuery(task: string, resume: string | undefined): Promise<A
       permissionMode: "acceptEdits",
       maxTurns: env.MAX_TURNS,
       model: env.AGENT_MODEL,
-      resume,
       allowedTools: permissions.allow,
       disallowedTools: permissions.deny,
       // Never load the target repo's .claude/settings.json or
@@ -240,7 +239,6 @@ async function executeQuery(task: string, resume: string | undefined): Promise<A
     } else if (message.type === "user") {
       log("agent_message", { type: message.type, content: message.message.content });
     } else if (message.type === "system" && "subtype" in message && message.subtype === "init") {
-      sessionId = message.session_id;
       log("agent_init", {
         model: message.model,
         claudeCodeVersion: message.claude_code_version,
@@ -258,7 +256,6 @@ async function executeQuery(task: string, resume: string | undefined): Promise<A
     if (message.type === "result") {
       succeeded = message.subtype === "success" && !message.is_error;
       totalCostUsd = message.total_cost_usd;
-      sessionId = message.session_id ?? sessionId;
       numTurns = message.num_turns;
       if ("result" in message && typeof message.result === "string") {
         finalMessage = message.result;
@@ -285,38 +282,5 @@ async function executeQuery(task: string, resume: string | undefined): Promise<A
 
   log("agent_end", { toolCallCount: toolCalls.length, succeeded, finalMessage: displayMessage, commitMetadata });
 
-  return { toolCalls, finalMessage: displayMessage, succeeded, totalCostUsd, commitMetadata, sessionId, numTurns };
-}
-
-// The agent edits files through the SDK's built-in tools (Read/Edit/Grep/Glob).
-// Commit/push/PR happens separately in git.ts after the run finishes — the agent
-// never runs `git push`/`gh pr create` itself, so permissionMode "acceptEdits"
-// (auto-accept file edits) is enough without opening up Bash.
-export async function runAgent(task: string, options: AgentRunOptions = {}): Promise<AgentRunResult> {
-  log("agent_start", {
-    task,
-    workspacePath: env.WORKSPACE_PATH,
-    requestedModel: env.AGENT_MODEL ?? "default",
-    maxTurns: env.MAX_TURNS,
-    maxDurationMs: env.MAX_DURATION_MS,
-    nodeVersion: process.version
-  });
-
-  try {
-    return await executeQuery(task, options.resume);
-  } catch (err) {
-    // A stored session id from an earlier round is only ever a local-storage
-    // reference (see the SDK's own conversation-history model) — it doesn't
-    // survive into a *different* container, which is exactly what every
-    // review-followup round runs in (`docker run --rm` per job, no shared
-    // volume across runs). The SDK doesn't degrade this to a fresh session on
-    // its own; it throws instead. Retry once as a brand-new session rather
-    // than letting a resume that was only ever a nice-to-have take down the
-    // whole round — a resume failure must never be a new failure mode.
-    if (!options.resume) {
-      throw err;
-    }
-    log("resume_failed_retrying_fresh_session", { error: String(err) });
-    return await executeQuery(task, undefined);
-  }
+  return { toolCalls, finalMessage: displayMessage, succeeded, totalCostUsd, commitMetadata, numTurns };
 }

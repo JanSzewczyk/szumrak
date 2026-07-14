@@ -68,15 +68,14 @@ async function main() {
       return;
     }
 
-    // Adds a visible "Szumrak run info" cost/round table plus a trailing,
-    // invisible szumrak-meta comment so the first review-followup round can
-    // both show a reviewer what this run cost and resume its SDK session
-    // instead of rebuilding context from scratch — see lib/run-info.ts.
+    // Adds a visible "Szumrak run info" cost/round table (plus a trailing,
+    // invisible szumrak-meta comment carrying the same data as JSON) so a
+    // reviewer can see at a glance what each round cost — see lib/run-info.ts.
     const body = appendRunInfo(
       `Task:\n${task}\n\nGenerated automatically by Szumrak.\n\nModel summary:\n${result.finalMessage}`,
       undefined,
       0,
-      { sessionId: result.sessionId, totalCostUsd: result.totalCostUsd, numTurns: result.numTurns }
+      { totalCostUsd: result.totalCostUsd, numTurns: result.numTurns }
     );
 
     const prUrl = await commitAndOpenPR(task.slice(0, 72), body, result.commitMetadata);

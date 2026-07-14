@@ -8,16 +8,15 @@ export interface RunInfoRound {
 
 export interface SzumrakMeta {
   v: 1;
-  lastSessionId?: string;
   totalCostUsd?: number;
   rounds: Array<RunInfoRound>;
 }
 
-// The hidden HTML comment carries the same data machine-readably (for
-// session resume), placed after the visible table so both stay adjacent at
-// the end of the body. Neither ever precedes the "Task:\n...\nGenerated
-// automatically by Szumrak." block index.ts/review-followup.ts write first,
-// so ORIGINAL_TASK_PATTERN in review-followup.ts is unaffected.
+// The hidden HTML comment carries the cost/round data machine-readably, placed
+// after the visible table so both stay adjacent at the end of the body. Neither
+// ever precedes the "Task:\n...\nGenerated automatically by Szumrak." block
+// index.ts/review-followup.ts write first, so ORIGINAL_TASK_PATTERN in
+// review-followup.ts is unaffected.
 const META_COMMENT_PATTERN = /<!-- szumrak-meta:(.*?) -->/;
 const RUN_INFO_SECTION_PATTERN = /\n---\n\*\*Szumrak run info\*\*[\s\S]*?(?=\n<!-- szumrak-meta:|$)/;
 
@@ -31,7 +30,7 @@ export function parseSzumrakMeta(prBody: string): SzumrakMeta | undefined {
     if (!Array.isArray(parsed.rounds)) {
       return undefined;
     }
-    return { v: 1, lastSessionId: parsed.lastSessionId, totalCostUsd: parsed.totalCostUsd, rounds: parsed.rounds };
+    return { v: 1, totalCostUsd: parsed.totalCostUsd, rounds: parsed.rounds };
   } catch (err) {
     log("szumrak_meta_invalid", { error: String(err) });
     return undefined;
@@ -64,16 +63,15 @@ function buildRunInfoSection(meta: SzumrakMeta): string {
 }
 
 export interface RoundRunInfo {
-  sessionId?: string;
   totalCostUsd?: number;
   numTurns?: number;
 }
 
 // Appends/refreshes both a human-readable cost/round table (visible in the
 // rendered PR, so a reviewer can see at a glance how much each round cost)
-// and the trailing szumrak-meta comment carrying the same data as JSON for
-// session resume. Both are stripped and rebuilt from scratch each call, so
-// there's never more than one of each in the body.
+// and the trailing szumrak-meta comment carrying the same data as JSON. Both
+// are stripped and rebuilt from scratch each call, so there's never more than
+// one of each in the body.
 export function appendRunInfo(
   prBody: string,
   previousMeta: SzumrakMeta | undefined,
@@ -90,7 +88,7 @@ export function appendRunInfo(
     ? rounds.reduce((sum, r) => sum + (r.costUsd ?? 0), 0)
     : undefined;
 
-  const meta: SzumrakMeta = { v: 1, lastSessionId: result.sessionId, totalCostUsd, rounds };
+  const meta: SzumrakMeta = { v: 1, totalCostUsd, rounds };
 
   return `${withoutOldSection}${buildRunInfoSection(meta)}\n\n<!-- szumrak-meta:${JSON.stringify(meta)} -->`;
 }

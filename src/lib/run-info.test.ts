@@ -2,7 +2,7 @@
 // 1. parseSzumrakMeta returns undefined when the body has no szumrak-meta comment.
 // 2. parseSzumrakMeta returns undefined (not throw) when the comment's JSON is malformed.
 // 3. parseSzumrakMeta returns undefined when the parsed JSON has no "rounds" array (old-shape comment).
-// 4. parseSzumrakMeta returns the parsed meta (lastSessionId, totalCostUsd, rounds) when valid.
+// 4. parseSzumrakMeta returns the parsed meta (totalCostUsd, rounds) when valid.
 // 5. appendRunInfo on a body with no prior meta appends a visible run-info table (round 0,
 //    formatted cost) plus a trailing szumrak-meta comment with a single-entry rounds array.
 // 6. appendRunInfo given previousMeta appends the new round to the existing rounds and sums
@@ -29,15 +29,14 @@ describe("parseSzumrakMeta", () => {
   });
 
   test("returns undefined when the parsed JSON has no rounds array", () => {
-    const body = `${BASE_BODY}\n\n<!-- szumrak-meta:{"v":1,"lastSessionId":"abc"} -->`;
+    const body = `${BASE_BODY}\n\n<!-- szumrak-meta:{"v":1,"totalCostUsd":0.5} -->`;
     expect(parseSzumrakMeta(body)).toBeUndefined();
   });
 
   test("returns the parsed meta when valid", () => {
-    const body = `${BASE_BODY}\n\n<!-- szumrak-meta:{"v":1,"lastSessionId":"abc","totalCostUsd":0.5,"rounds":[{"round":0,"costUsd":0.5,"numTurns":4}]} -->`;
+    const body = `${BASE_BODY}\n\n<!-- szumrak-meta:{"v":1,"totalCostUsd":0.5,"rounds":[{"round":0,"costUsd":0.5,"numTurns":4}]} -->`;
     expect(parseSzumrakMeta(body)).toEqual({
       v: 1,
-      lastSessionId: "abc",
       totalCostUsd: 0.5,
       rounds: [{ round: 0, costUsd: 0.5, numTurns: 4 }]
     });
@@ -47,7 +46,6 @@ describe("parseSzumrakMeta", () => {
 describe("appendRunInfo", () => {
   test("appends a visible run-info table and a szumrak-meta comment for the first round", () => {
     const body = appendRunInfo(BASE_BODY, undefined, 0, {
-      sessionId: "session-1",
       totalCostUsd: 0.41,
       numTurns: 5
     });
@@ -55,20 +53,18 @@ describe("appendRunInfo", () => {
     expect(body).toContain("**Szumrak run info**");
     expect(body).toContain("| 0 (initial) | $0.41 | 5 |");
     expect(body).toContain("**Total cost:** $0.41");
-    expect(body).toContain('"lastSessionId":"session-1"');
+    expect(body).toContain('"totalCostUsd":0.41');
     expect(body.startsWith(BASE_BODY.split("\n\nModel summary")[0])).toBe(true);
   });
 
   test("accumulates rounds and sums totalCostUsd when previousMeta is given", () => {
     const bodyAfterRound0 = appendRunInfo(BASE_BODY, undefined, 0, {
-      sessionId: "session-1",
       totalCostUsd: 0.41,
       numTurns: 5
     });
     const meta = parseSzumrakMeta(bodyAfterRound0);
 
     const bodyAfterRound1 = appendRunInfo(bodyAfterRound0, meta, 1, {
-      sessionId: "session-2",
       totalCostUsd: 0.23,
       numTurns: 3
     });
@@ -76,7 +72,6 @@ describe("appendRunInfo", () => {
     expect(bodyAfterRound1).toContain("| 0 (initial) | $0.41 | 5 |");
     expect(bodyAfterRound1).toContain("| 1 | $0.23 | 3 |");
     expect(bodyAfterRound1).toContain("**Total cost:** $0.64");
-    expect(bodyAfterRound1).toContain('"lastSessionId":"session-2"');
 
     // Only one table and one comment survive, not one per round.
     expect(bodyAfterRound1.match(/\*\*Szumrak run info\*\*/g)).toHaveLength(1);
