@@ -1,4 +1,5 @@
 import { appendFileSync } from "node:fs";
+import { env } from "~/env";
 
 // GITHUB_STEP_SUMMARY is a GH Actions-provided file path rendered as markdown
 // on the job's summary page — the closest equivalent we have today to the
@@ -11,7 +12,7 @@ import { appendFileSync } from "node:fs";
 // is unset outside CI (local/dev runs), and a missing/unmounted file must
 // never crash the agent.
 export function writeStepSummary(message: string, icon = "❌"): void {
-  const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+  const summaryPath = env.GITHUB_STEP_SUMMARY;
   if (!summaryPath) {
     return;
   }

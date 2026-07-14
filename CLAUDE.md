@@ -89,9 +89,10 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
 
 Config is entirely env-var driven and validated in `env.ts`: `TASK`, `WORKSPACE_PATH`, `REPO`
 (`owner/repo`), `GH_TOKEN`, `ANTHROPIC_API_KEY`, `DRY_RUN`, `AGENT_MODEL`, `MAX_TURNS`,
-`MAX_DURATION_MS`, `AGENT_LOG_PATH`, `TARGET_REPO_PATH` (local-only, used by `dev:run`). See README
-table and `.env.example`. `REPO`/`GH_TOKEN` are optional in the schema but required for real
-(non-`DRY_RUN`) runs — `index.ts` guards that upfront.
+`MAX_DURATION_MS`, `AGENT_LOG_PATH`, `TARGET_REPO_PATH` (local-only, used by `dev:run`),
+`GITHUB_STEP_SUMMARY` (read by `src/lib/summary.ts`). See README table and `.env.example`.
+`REPO`/`GH_TOKEN` are optional in the schema but required for real (non-`DRY_RUN`) runs —
+`index.ts` guards that upfront.
 
 ## Invariants — do not regress these
 
@@ -112,6 +113,12 @@ table and `.env.example`. `REPO`/`GH_TOKEN` are optional in the schema but requi
   `console.log`/`appendFileSync` for tool inputs/outputs, and don't remove this when touching the
   logger — it's the only thing standing between a hardcoded key the agent reads and a public-ish CI
   artifact.
+- **Every env var is read through `env` from `env.ts` — never `process.env.X` directly in
+  application code.** Add new vars to the Zod schema in `env.ts` first (with a `.describe()`),
+  then import `env` wherever it's needed. This is what makes a missing/malformed var fail fast with
+  a readable message before the agent runs, instead of surfacing as an obscure `undefined` deep in
+  a run. Exceptions: `vitest.config.ts` (bootstraps env before `env.ts` is ever imported) and test
+  files (`*.test.ts`) setting `process.env` to simulate config for the module under test.
 
 ## Docs & language
 

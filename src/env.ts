@@ -62,6 +62,13 @@ export const env = createEnv({
       .optional()
       .describe(
         "Local checkout of the target repository, mounted as /workspace by `npm run dev:run` (Level 2 Docker testing). Not used by the agent itself."
+      ),
+    GITHUB_STEP_SUMMARY: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "GH Actions-provided path to the job's step summary file; unset outside CI. Read by src/lib/summary.ts."
       )
   },
   runtimeEnv: process.env,
