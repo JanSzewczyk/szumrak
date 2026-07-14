@@ -141,6 +141,45 @@ describe("runAgent", () => {
     expect(result.sessionId).toBe("session-from-result");
   });
 
+  // biome-ignore lint/correctness/useYield: this generator only exists to throw before yielding anything
+  async function* throwingStream(message: string): AsyncGenerator<unknown> {
+    throw new Error(message);
+  }
+
+  test("retries as a fresh session when the stored session id can't be resumed (e.g. a different container)", async () => {
+    mockedQuery
+      .mockImplementationOnce(() => throwingStream("No conversation found with session ID: stale-session") as never)
+      .mockImplementationOnce(() => streamOf([resultMessage({ session_id: "new-session" })]) as never);
+
+    const result = await runAgent("task", { resume: "stale-session" });
+
+    expect(mockedQuery).toHaveBeenCalledTimes(2);
+    expect(mockedQuery).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ options: expect.objectContaining({ resume: "stale-session" }) })
+    );
+    expect(mockedQuery).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ options: expect.objectContaining({ resume: undefined }) })
+    );
+    expect(result.succeeded).toBe(true);
+    expect(result.sessionId).toBe("new-session");
+  });
+
+  test("propagates the error when there was no resume to retry without", async () => {
+    mockedQuery.mockImplementationOnce(() => throwingStream("boom") as never);
+
+    await expect(runAgent("task")).rejects.toThrow("boom");
+    expect(mockedQuery).toHaveBeenCalledTimes(1);
+  });
+
+  test("propagates the error when the retry without resume also fails", async () => {
+    mockedQuery.mockImplementation(() => throwingStream("still broken") as never);
+
+    await expect(runAgent("task", { resume: "stale-session" })).rejects.toThrow("still broken");
+    expect(mockedQuery).toHaveBeenCalledTimes(2);
+  });
+
   test("collects tool_use blocks into toolCalls in stream order", async () => {
     mockedQuery.mockReturnValue(
       streamOf([
