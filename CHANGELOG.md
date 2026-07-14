@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.6.2](https://github.com/JanSzewczyk/szumrak/compare/v1.6.1...v1.6.2) (2026-07-14)
+
+### Bug Fixes
+
+* skip review-followup for an empty-body pull_request_review ([3c25e7a](https://github.com/JanSzewczyk/szumrak/commit/3c25e7a8865a36fc7b13088b630e5b5caaa355d8))
+
 ## [1.6.1](https://github.com/JanSzewczyk/szumrak/compare/v1.6.0...v1.6.1) (2026-07-14)
 
 ### Bug Fixes
