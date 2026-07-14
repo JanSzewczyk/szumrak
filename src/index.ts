@@ -7,11 +7,11 @@ import { runReviewFollowUp } from "./review-followup";
 import { runAgent } from "./run-agent";
 
 async function main() {
-  // When not a dry run we need REPO + GH_TOKEN to talk to GitHub at all —
-  // check upfront so a misconfigured run fails before spending an API turn
-  // rather than after.
-  if (!env.DRY_RUN && (!env.REPO || !env.GH_TOKEN)) {
-    console.error("REPO and GH_TOKEN are required unless DRY_RUN=true.");
+  // When not a dry run we need REPO + the GitHub App credentials to talk to
+  // GitHub at all — check upfront so a misconfigured run fails before
+  // spending an API turn rather than after.
+  if (!env.DRY_RUN && (!env.REPO || !env.GH_APP_ID || !env.GH_APP_PRIVATE_KEY || !env.GH_APP_INSTALLATION_ID)) {
+    console.error("REPO, GH_APP_ID, GH_APP_PRIVATE_KEY, and GH_APP_INSTALLATION_ID are required unless DRY_RUN=true.");
     process.exit(1);
   }
 
@@ -39,8 +39,8 @@ async function main() {
 
     const task = env.TASK as string;
 
-    // Deduplication needs REPO/GH_TOKEN to list PRs, both guaranteed present
-    // by the guard above whenever DRY_RUN is off.
+    // Deduplication needs REPO + GitHub App credentials to list PRs, all
+    // guaranteed present by the guard above whenever DRY_RUN is off.
     if (!env.DRY_RUN) {
       const { owner, repo } = parseRepo(env.REPO);
       const existingPRUrl = await findOpenPRForTask(owner, repo, task);

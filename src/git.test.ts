@@ -33,7 +33,8 @@ vi.mock("~/lib/github", () => ({
   octokit: {
     pulls: { create: vi.fn() },
     issues: { addLabels: vi.fn() }
-  }
+  },
+  getInstallationToken: vi.fn().mockResolvedValue("test-installation-token")
 }));
 
 vi.mock("~/lib/logger", () => ({
@@ -49,7 +50,6 @@ describe("commitAndOpenPR", () => {
     vi.clearAllMocks();
     process.env.WORKSPACE_PATH = "/workspace";
     process.env.REPO = "acme/widgets";
-    process.env.GH_TOKEN = "test-token";
   });
 
   test("returns null and does not commit/push/open a PR when there are no changes", async () => {
@@ -85,7 +85,7 @@ describe("commitAndOpenPR", () => {
     expect(mockedExecFileSync).toHaveBeenNthCalledWith(
       1,
       "git",
-      ["remote", "set-url", "origin", "https://x-access-token:test-token@github.com/acme/widgets.git"],
+      ["remote", "set-url", "origin", "https://x-access-token:test-installation-token@github.com/acme/widgets.git"],
       { cwd: "/workspace" }
     );
     expect(mockedExecFileSync).toHaveBeenCalledWith(
@@ -261,18 +261,17 @@ describe("checkoutExistingBranch", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.WORKSPACE_PATH = "/workspace";
-    process.env.GH_TOKEN = "test-token";
   });
 
-  test("authenticates the remote, then fetches, checks out and pulls the given branch", () => {
-    checkoutExistingBranch("acme", "widgets", "test/add-x-tests-abc123");
+  test("authenticates the remote, then fetches, checks out and pulls the given branch", async () => {
+    await checkoutExistingBranch("acme", "widgets", "test/add-x-tests-abc123");
 
     const commands = mockedExecFileSync.mock.calls.map(([, args]) => (args as Array<string>)[0]);
     expect(commands).toEqual(["remote", "fetch", "checkout", "pull"]);
     expect(mockedExecFileSync).toHaveBeenNthCalledWith(
       1,
       "git",
-      ["remote", "set-url", "origin", "https://x-access-token:test-token@github.com/acme/widgets.git"],
+      ["remote", "set-url", "origin", "https://x-access-token:test-installation-token@github.com/acme/widgets.git"],
       { cwd: "/workspace" }
     );
     expect(mockedExecFileSync).toHaveBeenCalledWith(

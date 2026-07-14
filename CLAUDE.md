@@ -82,7 +82,16 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   falling back to `chore(agent): <task text>` when it's missing or unparsable. Also exports
   `parseRepo` (shared `REPO` → `{owner, repo}` split, used by `index.ts`/`dedup.ts`/
   `review-followup.ts` too) and the `review-followup.ts`-only trio `checkoutExistingBranch`/
-  `diffAgainstBase`/`pushFollowUpCommit`.
+  `diffAgainstBase`/`pushFollowUpCommit`. `configureGitRemoteAuth`/`checkoutExistingBranch`/
+  `commitAndOpenPR` are `async` because embedding a fresh token in the git remote URL requires
+  awaiting `getInstallationToken()` first — see below.
+- **`src/lib/github.ts`** authenticates as a **GitHub App** (`szumrak-bot`, via `@octokit/auth-app`),
+  not a personal PAT — this is what makes PRs show `szumrak-bot[bot]` as author instead of whoever
+  owns the token. `octokit` is constructed with `authStrategy: createAppAuth`, which transparently
+  handles the JWT → installation token exchange and refresh on every request; no manual token
+  lifecycle code needed for API calls. `getInstallationToken()` is a second, separate
+  `createAppAuth` instance that returns the raw token string — needed because `git push` embeds the
+  token directly in the remote URL, which Octokit's internal auth strategy doesn't expose.
 - **`run-agent.ts`** also has the agent end its final response with a fenced ` ```commit ` block
   (Conventional Commits type/scope/subject/branch), appended to the system prompt via
   `COMMIT_METADATA_INSTRUCTIONS`. `parseCommitMetadata()` extracts it (with a fallback for the model
@@ -102,12 +111,13 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
 
 Config is entirely env-var driven and validated in `env.ts`: `TASK` (required only for
 `MODE=initial`), `MODE` (`initial` default | `review-followup`), `PR_NUMBER`/`REVIEW_FEEDBACK`
-(required only for `MODE=review-followup`), `WORKSPACE_PATH`, `REPO` (`owner/repo`), `GH_TOKEN`,
+(required only for `MODE=review-followup`), `WORKSPACE_PATH`, `REPO` (`owner/repo`),
+`GH_APP_ID`/`GH_APP_PRIVATE_KEY`/`GH_APP_INSTALLATION_ID` (GitHub App credentials — see below),
 `ANTHROPIC_API_KEY`, `DRY_RUN`, `AGENT_MODEL`, `MAX_TURNS`, `MAX_DURATION_MS`, `AGENT_LOG_PATH`,
 `TARGET_REPO_PATH` (local-only, used by `dev:run`), `GITHUB_STEP_SUMMARY` (read by
-`src/lib/summary.ts`). See README table and `.env.example`. `REPO`/`GH_TOKEN` are optional in the
-schema but required for real (non-`DRY_RUN`) runs — `index.ts` guards that upfront, alongside the
-`MODE`-specific requirements above.
+`src/lib/summary.ts`). See README table and `.env.example`. `REPO`/the App credentials are
+optional in the schema but required for real (non-`DRY_RUN`) runs — `index.ts` guards that
+upfront, alongside the `MODE`-specific requirements above.
 
 ## Invariants — do not regress these
 

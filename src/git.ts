@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { octokit } from "~/lib/github";
+import { getInstallationToken, octokit } from "~/lib/github";
 import { env } from "./env";
 import { log } from "./lib/logger";
 import type { CommitMetadata } from "./run-agent";
@@ -41,8 +41,9 @@ function git(args: Array<string>): string {
 // the directory that ends up mounted as WORKSPACE_PATH). Embedding the token
 // in the remote URL is explicit and doesn't depend on any of that. Bypasses
 // the git() wrapper so the token is never written to agent-run.jsonl.
-function configureGitRemoteAuth(owner: string, repo: string): void {
-  const authedUrl = `https://x-access-token:${env.GH_TOKEN}@github.com/${owner}/${repo}.git`;
+async function configureGitRemoteAuth(owner: string, repo: string): Promise<void> {
+  const token = await getInstallationToken();
+  const authedUrl = `https://x-access-token:${token}@github.com/${owner}/${repo}.git`;
   execFileSync("git", ["remote", "set-url", "origin", authedUrl], { cwd: env.WORKSPACE_PATH });
   log("git", { args: ["remote", "set-url", "origin", "<redacted>"] });
 }
@@ -61,8 +62,8 @@ export function parseRepo(repo: string | undefined): { owner: string; repo: stri
 // review-followup path must run the agent against the branch's current state
 // (including whatever the agent already changed in earlier rounds), not a
 // fresh checkout of main.
-export function checkoutExistingBranch(owner: string, repo: string, branch: string): void {
-  configureGitRemoteAuth(owner, repo);
+export async function checkoutExistingBranch(owner: string, repo: string, branch: string): Promise<void> {
+  await configureGitRemoteAuth(owner, repo);
   git(["fetch", "origin", branch]);
   git(["checkout", branch]);
   git(["pull", "origin", branch]);
@@ -109,7 +110,7 @@ export async function commitAndOpenPR(
   const commitMessage = buildCommitMessage(commitMetadata, taskSummary);
 
   const { owner, repo } = parseRepo(env.REPO);
-  configureGitRemoteAuth(owner, repo);
+  await configureGitRemoteAuth(owner, repo);
 
   git(["checkout", "-b", branch]);
 

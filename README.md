@@ -162,15 +162,21 @@ from source. See `target-repo-templates/.github/workflows/szumrak.yml` for a ref
 | Variable | Required | Description |
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | yes | Claude API key |
-| `TASK` | yes | the task for the agent, in natural language |
+| `TASK` | yes when `MODE=initial` | the task for the agent, in natural language |
+| `MODE` | no (default `initial`) | `initial` runs `TASK` and opens a new PR; `review-followup` addresses review feedback on `PR_NUMBER`'s existing branch instead |
+| `PR_NUMBER` | yes when `MODE=review-followup` | PR number to follow up on |
+| `REVIEW_FEEDBACK` | yes when `MODE=review-followup` | reviewer's feedback text to address |
 | `WORKSPACE_PATH` | no (default `/workspace`) | path to the target repository |
 | `REPO` | yes when opening a PR | `owner/repo` of the target repository |
-| `GH_TOKEN` | yes when opening a PR | PAT with minimal scope |
+| `GH_APP_ID` | yes when opening a PR | GitHub App ID |
+| `GH_APP_PRIVATE_KEY` | yes when opening a PR | GitHub App private key (PEM contents) |
+| `GH_APP_INSTALLATION_ID` | yes when opening a PR | GitHub App installation ID for the target repo |
 | `DRY_RUN` | no | `true` skips commit/push/PR, changes stay on disk only |
 | `AGENT_MODEL` | no (default: SDK default model) | Claude model alias (`haiku`, `sonnet`, `opus`) or full model ID |
 | `MAX_TURNS` | no (default `30`) | agent turn limit |
 | `MAX_DURATION_MS` | no (default `900000`) | run duration limit |
 | `AGENT_LOG_PATH` | no (default `<WORKSPACE_PATH>/agent-run.jsonl`) | JSONL log path |
+| `GITHUB_STEP_SUMMARY` | no | GH Actions-provided step summary file path; read by `src/lib/summary.ts` for failure/skip notices |
 
 All variables are validated at startup by [`src/env.ts`](./src/env.ts) — an invalid or missing
 required variable prints a readable error list and exits before any API call is made. See

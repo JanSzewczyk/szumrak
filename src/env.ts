@@ -49,7 +49,18 @@ export const env = createEnv({
       .regex(/^[^/\s]+\/[^/\s]+$/, "REPO must be in 'owner/repo' format")
       .optional()
       .describe("Target repository (owner/repo) — required only when opening a PR"),
-    GH_TOKEN: z.string().min(1).optional().describe("GitHub PAT used to push the branch and open the PR"),
+    GH_APP_ID: z.string().min(1).optional().describe("GitHub App ID; required unless DRY_RUN=true"),
+    GH_APP_PRIVATE_KEY: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("GitHub App private key (PEM); required unless DRY_RUN=true"),
+    GH_APP_INSTALLATION_ID: z.coerce
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("GitHub App installation ID for the target repo; required unless DRY_RUN=true"),
     DRY_RUN: z
       .string()
       .optional()

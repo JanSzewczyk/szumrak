@@ -80,7 +80,7 @@ export async function runReviewFollowUp(
   }
 
   const branch = pr.head.ref;
-  checkoutExistingBranch(owner, repo, branch);
+  await checkoutExistingBranch(owner, repo, branch);
 
   const originalTask = extractOriginalTask(pr.body ?? "");
   const diff = diffAgainstBase();

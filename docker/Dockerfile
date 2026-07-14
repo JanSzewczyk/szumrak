@@ -15,10 +15,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends git curl ca-cer
 # The container also has no git identity by default, so `git commit` in
 # git.ts fails with "Author identity unknown". Every commit the agent makes
 # is machine-authored, so a fixed bot identity is set once here rather than
-# per-run.
+# per-run. Identity matches the "szumrak-bot" GitHub App's auto-created bot
+# user (login "szumrak-bot[bot]", id 304933492) — the noreply email format
+# (<id>+<login>@users.noreply.github.com) is what makes GitHub link these
+# commits to the bot's profile/avatar instead of showing plain text.
 RUN git config --system --add safe.directory '*' \
-    && git config --system user.name "szumrak-agent" \
-    && git config --system user.email "szumrak-agent@users.noreply.github.com"
+    && git config --system user.name "szumrak-bot[bot]" \
+    && git config --system user.email "304933492+szumrak-bot[bot]@users.noreply.github.com"
 
 WORKDIR /agent
 COPY package.json package-lock.json ./
