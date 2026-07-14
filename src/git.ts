@@ -47,6 +47,59 @@ function configureGitRemoteAuth(owner: string, repo: string): void {
   log("git", { args: ["remote", "set-url", "origin", "<redacted>"] });
 }
 
+// Shared by commitAndOpenPR, the dedup check, and review-followup — all three
+// need owner/repo split out of REPO ("owner/repo").
+export function parseRepo(repo: string | undefined): { owner: string; repo: string } {
+  const [owner, name] = (repo ?? "").split("/");
+  if (!owner || !name) {
+    throw new Error("The REPO environment variable must be in 'owner/repo' format");
+  }
+  return { owner, repo: name };
+}
+
+// Checks out an existing PR branch instead of creating a new one — the
+// review-followup path must run the agent against the branch's current state
+// (including whatever the agent already changed in earlier rounds), not a
+// fresh checkout of main.
+export function checkoutExistingBranch(owner: string, repo: string, branch: string): void {
+  configureGitRemoteAuth(owner, repo);
+  git(["fetch", "origin", branch]);
+  git(["checkout", branch]);
+  git(["pull", "origin", branch]);
+}
+
+const MAX_DIFF_LENGTH = 4000;
+
+// Included in the review-followup prompt so the model sees the scope of its
+// own prior changes without re-reading the whole repo. Truncated for the same
+// reason logger.ts truncates long strings — a huge diff is more prompt noise
+// than a diff summary would be.
+export function diffAgainstBase(baseBranch = "main"): string {
+  const diff = git(["diff", `${baseBranch}...HEAD`]);
+  if (diff.length <= MAX_DIFF_LENGTH) {
+    return diff;
+  }
+  return `${diff.slice(0, MAX_DIFF_LENGTH)}\n... [truncated, ${diff.length} chars total]`;
+}
+
+// Follow-up commits land on the PR's existing branch — GitHub updates the
+// open PR automatically once a new commit lands on it, so there is no PR to
+// create here (unlike commitAndOpenPR). Assumes checkoutExistingBranch already
+// ran, so the workspace is already on the right branch.
+export function pushFollowUpCommit(taskSummary: string, commitMetadata?: CommitMetadata): boolean {
+  const status = git(["status", "--porcelain"]);
+  if (!status.trim()) {
+    log("no_changes");
+    return false;
+  }
+
+  const commitMessage = buildCommitMessage(commitMetadata, taskSummary);
+  git(["add", "-A"]);
+  git(["commit", "-m", commitMessage]);
+  git(["push", "origin", "HEAD"]);
+  return true;
+}
+
 export async function commitAndOpenPR(
   taskSummary: string,
   body: string,
@@ -55,10 +108,7 @@ export async function commitAndOpenPR(
   const branch = buildBranchName(commitMetadata);
   const commitMessage = buildCommitMessage(commitMetadata, taskSummary);
 
-  const [owner, repo] = (env.REPO ?? "").split("/");
-  if (!owner || !repo) {
-    throw new Error("The REPO environment variable must be in 'owner/repo' format");
-  }
+  const { owner, repo } = parseRepo(env.REPO);
   configureGitRemoteAuth(owner, repo);
 
   git(["checkout", "-b", branch]);

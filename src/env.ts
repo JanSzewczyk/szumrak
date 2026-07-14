@@ -17,7 +17,28 @@ function reportInvalidEnv(issues: ReadonlyArray<StandardSchemaV1.Issue>): never 
 export const env = createEnv({
   server: {
     ANTHROPIC_API_KEY: z.string().min(1).describe("Claude API key, read by the Claude Agent SDK"),
-    TASK: z.string().min(1).describe("Natural-language task for the agent to perform"),
+    TASK: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Natural-language task for the agent to perform; required when MODE=initial"),
+    MODE: z
+      .enum(["initial", "review-followup"])
+      .default("initial")
+      .describe(
+        "initial: run TASK and open a new PR. review-followup: address review feedback on PR_NUMBER's existing branch instead."
+      ),
+    PR_NUMBER: z.coerce
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("PR number to follow up on; required when MODE=review-followup"),
+    REVIEW_FEEDBACK: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Reviewer's feedback text to address; required when MODE=review-followup"),
     WORKSPACE_PATH: z
       .string()
       .min(1)

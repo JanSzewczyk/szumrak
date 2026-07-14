@@ -49,8 +49,18 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
 
 ## Execution flow
 
-`src/index.ts` (entrypoint, reads env) → `runAgent(task)` → on success and not `DRY_RUN`,
-`commitAndOpenPR(...)`.
+`src/index.ts` (entrypoint, reads env) branches on `MODE`:
+- **`MODE=initial`** (default) — `runAgent(task)` → on success and not `DRY_RUN`, `commitAndOpenPR(...)`.
+- **`MODE=review-followup`** — `runReviewFollowUp(owner, repo, PR_NUMBER, REVIEW_FEEDBACK)`
+  (`src/review-followup.ts`). Addresses code-review feedback on an *existing* PR's branch instead of
+  opening a new one: reads the round count off a `review-round-N` PR label (hard cap `MAX_REVIEW_ROUNDS
+  = 3`, past which it writes a warning `writeStepSummary` and stops without touching the agent),
+  `checkoutExistingBranch`s the PR's head ref *before* calling `runAgent` (the agent must see the
+  branch's current state, not `main`), builds the prompt from the original task (parsed back out of
+  the PR body via `Task:\n<task>\n\nGenerated automatically by Szumrak.`), `diffAgainstBase()`, and the
+  review feedback text, then `pushFollowUpCommit`s straight to that branch (no new branch, no new PR —
+  GitHub updates the existing PR when a commit lands on its branch) and bumps the round label. `TASK`
+  is not required in this mode; `PR_NUMBER` + `REVIEW_FEEDBACK` are, instead.
 
 - **`run-agent.ts`** wraps the SDK `query()` stream. `permissionMode: "acceptEdits"`, `maxTurns`
   from `env`, **no `skills` option** (the agent runs without skills — see below). It walks the
@@ -69,7 +79,10 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   `src/lib/github.ts`) → add `ai-generated` label. The agent itself never runs git; all git/PR
   work happens here, in Node, *after* the run. Branch name and commit message are driven by the
   agent's own self-reported `CommitMetadata` (type/scope/subject/branch) when present — see below —
-  falling back to `chore(agent): <task text>` when it's missing or unparsable.
+  falling back to `chore(agent): <task text>` when it's missing or unparsable. Also exports
+  `parseRepo` (shared `REPO` → `{owner, repo}` split, used by `index.ts`/`dedup.ts`/
+  `review-followup.ts` too) and the `review-followup.ts`-only trio `checkoutExistingBranch`/
+  `diffAgainstBase`/`pushFollowUpCommit`.
 - **`run-agent.ts`** also has the agent end its final response with a fenced ` ```commit ` block
   (Conventional Commits type/scope/subject/branch), appended to the system prompt via
   `COMMIT_METADATA_INSTRUCTIONS`. `parseCommitMetadata()` extracts it (with a fallback for the model
@@ -87,12 +100,14 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   `issue_comment` trigger to post a PR/issue comment against (see Notion page 14 vs. the current
   `workflow_dispatch`-only trigger). Success stays a silent `ai-generated` PR + label.
 
-Config is entirely env-var driven and validated in `env.ts`: `TASK`, `WORKSPACE_PATH`, `REPO`
-(`owner/repo`), `GH_TOKEN`, `ANTHROPIC_API_KEY`, `DRY_RUN`, `AGENT_MODEL`, `MAX_TURNS`,
-`MAX_DURATION_MS`, `AGENT_LOG_PATH`, `TARGET_REPO_PATH` (local-only, used by `dev:run`),
-`GITHUB_STEP_SUMMARY` (read by `src/lib/summary.ts`). See README table and `.env.example`.
-`REPO`/`GH_TOKEN` are optional in the schema but required for real (non-`DRY_RUN`) runs —
-`index.ts` guards that upfront.
+Config is entirely env-var driven and validated in `env.ts`: `TASK` (required only for
+`MODE=initial`), `MODE` (`initial` default | `review-followup`), `PR_NUMBER`/`REVIEW_FEEDBACK`
+(required only for `MODE=review-followup`), `WORKSPACE_PATH`, `REPO` (`owner/repo`), `GH_TOKEN`,
+`ANTHROPIC_API_KEY`, `DRY_RUN`, `AGENT_MODEL`, `MAX_TURNS`, `MAX_DURATION_MS`, `AGENT_LOG_PATH`,
+`TARGET_REPO_PATH` (local-only, used by `dev:run`), `GITHUB_STEP_SUMMARY` (read by
+`src/lib/summary.ts`). See README table and `.env.example`. `REPO`/`GH_TOKEN` are optional in the
+schema but required for real (non-`DRY_RUN`) runs — `index.ts` guards that upfront, alongside the
+`MODE`-specific requirements above.
 
 ## Invariants — do not regress these
 

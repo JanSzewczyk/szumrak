@@ -1,25 +1,49 @@
 import { env } from "./env";
-import { commitAndOpenPR } from "./git";
+import { commitAndOpenPR, parseRepo } from "./git";
 import { findOpenPRForTask } from "./lib/dedup";
 import { log } from "./lib/logger";
 import { writeStepSummary } from "./lib/summary";
+import { runReviewFollowUp } from "./review-followup";
 import { runAgent } from "./run-agent";
 
 async function main() {
-  // env (validated in ./env) guarantees TASK is present. When not a dry run we
-  // also need REPO + GH_TOKEN to open the PR — check upfront so a misconfigured
-  // run fails before spending an API turn rather than after.
+  // When not a dry run we need REPO + GH_TOKEN to talk to GitHub at all —
+  // check upfront so a misconfigured run fails before spending an API turn
+  // rather than after.
   if (!env.DRY_RUN && (!env.REPO || !env.GH_TOKEN)) {
     console.error("REPO and GH_TOKEN are required unless DRY_RUN=true.");
     process.exit(1);
   }
 
+  // TASK is only required for a fresh (MODE=initial) run; review-followup
+  // gets its task from the PR body instead, via PR_NUMBER + REVIEW_FEEDBACK.
+  if (env.MODE === "review-followup") {
+    if (!env.PR_NUMBER || !env.REVIEW_FEEDBACK) {
+      console.error("PR_NUMBER and REVIEW_FEEDBACK are required when MODE=review-followup.");
+      process.exit(1);
+    }
+  } else if (!env.TASK) {
+    console.error("TASK is required when MODE=initial.");
+    process.exit(1);
+  }
+
   try {
+    if (env.MODE === "review-followup") {
+      const { owner, repo } = parseRepo(env.REPO);
+      const result = await runReviewFollowUp(owner, repo, env.PR_NUMBER as number, env.REVIEW_FEEDBACK as string);
+      if (!result.succeeded) {
+        process.exit(1);
+      }
+      return;
+    }
+
+    const task = env.TASK as string;
+
     // Deduplication needs REPO/GH_TOKEN to list PRs, both guaranteed present
     // by the guard above whenever DRY_RUN is off.
     if (!env.DRY_RUN) {
-      const [owner, repo] = (env.REPO ?? "").split("/");
-      const existingPRUrl = await findOpenPRForTask(owner, repo, env.TASK);
+      const { owner, repo } = parseRepo(env.REPO);
+      const existingPRUrl = await findOpenPRForTask(owner, repo, task);
       if (existingPRUrl) {
         console.log(`An open PR already exists for this task, skipping: ${existingPRUrl}`);
         writeStepSummary(`Skipped — an open PR already exists for this task: ${existingPRUrl}`, "ℹ️");
@@ -27,7 +51,7 @@ async function main() {
       }
     }
 
-    const result = await runAgent(env.TASK);
+    const result = await runAgent(task);
 
     if (!result.succeeded) {
       log("agent_run_failed", { finalMessage: result.finalMessage });
@@ -44,8 +68,8 @@ async function main() {
     }
 
     const prUrl = await commitAndOpenPR(
-      env.TASK.slice(0, 72),
-      `Task:\n${env.TASK}\n\nGenerated automatically by Szumrak.\n\nModel summary:\n${result.finalMessage}`,
+      task.slice(0, 72),
+      `Task:\n${task}\n\nGenerated automatically by Szumrak.\n\nModel summary:\n${result.finalMessage}`,
       result.commitMetadata
     );
 

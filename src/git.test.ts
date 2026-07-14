@@ -22,7 +22,7 @@
 //    created PR's issue_number.
 
 import { execFileSync } from "node:child_process";
-import { commitAndOpenPR } from "~/git";
+import { checkoutExistingBranch, commitAndOpenPR, diffAgainstBase, parseRepo, pushFollowUpCommit } from "~/git";
 import { octokit } from "~/lib/github";
 
 vi.mock("node:child_process", () => ({
@@ -240,5 +240,144 @@ describe("commitAndOpenPR", () => {
     );
     expect(mockedExecFileSync).not.toHaveBeenCalled();
     expect(mockedPullsCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe("parseRepo", () => {
+  test("splits a valid 'owner/repo' string", () => {
+    expect(parseRepo("acme/widgets")).toEqual({ owner: "acme", repo: "widgets" });
+  });
+
+  test.each([
+    ["undefined", undefined],
+    ["missing slash", "not-a-valid-repo"],
+    ["empty string", ""]
+  ])("throws when repo is %s", (_label, repoValue) => {
+    expect(() => parseRepo(repoValue)).toThrow("The REPO environment variable must be in 'owner/repo' format");
+  });
+});
+
+describe("checkoutExistingBranch", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.WORKSPACE_PATH = "/workspace";
+    process.env.GH_TOKEN = "test-token";
+  });
+
+  test("authenticates the remote, then fetches, checks out and pulls the given branch", () => {
+    checkoutExistingBranch("acme", "widgets", "test/add-x-tests-abc123");
+
+    const commands = mockedExecFileSync.mock.calls.map(([, args]) => (args as Array<string>)[0]);
+    expect(commands).toEqual(["remote", "fetch", "checkout", "pull"]);
+    expect(mockedExecFileSync).toHaveBeenNthCalledWith(
+      1,
+      "git",
+      ["remote", "set-url", "origin", "https://x-access-token:test-token@github.com/acme/widgets.git"],
+      { cwd: "/workspace" }
+    );
+    expect(mockedExecFileSync).toHaveBeenCalledWith(
+      "git",
+      ["fetch", "origin", "test/add-x-tests-abc123"],
+      expect.anything()
+    );
+    expect(mockedExecFileSync).toHaveBeenCalledWith("git", ["checkout", "test/add-x-tests-abc123"], expect.anything());
+    expect(mockedExecFileSync).toHaveBeenCalledWith(
+      "git",
+      ["pull", "origin", "test/add-x-tests-abc123"],
+      expect.anything()
+    );
+  });
+});
+
+describe("diffAgainstBase", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.WORKSPACE_PATH = "/workspace";
+  });
+
+  test("returns the diff against the default base branch (main)", () => {
+    mockedExecFileSync.mockReturnValue("diff --git a/foo.ts b/foo.ts\n+added line\n");
+
+    const diff = diffAgainstBase();
+
+    expect(diff).toBe("diff --git a/foo.ts b/foo.ts\n+added line\n");
+    expect(mockedExecFileSync).toHaveBeenCalledWith("git", ["diff", "main...HEAD"], expect.anything());
+  });
+
+  test("truncates a diff longer than the length cap", () => {
+    const hugeDiff = "x".repeat(5000);
+    mockedExecFileSync.mockReturnValue(hugeDiff);
+
+    const diff = diffAgainstBase();
+
+    expect(diff).toBe(`${"x".repeat(4000)}\n... [truncated, 5000 chars total]`);
+  });
+
+  test("accepts a custom base branch", () => {
+    mockedExecFileSync.mockReturnValue("");
+
+    diffAgainstBase("develop");
+
+    expect(mockedExecFileSync).toHaveBeenCalledWith("git", ["diff", "develop...HEAD"], expect.anything());
+  });
+});
+
+describe("pushFollowUpCommit", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.WORKSPACE_PATH = "/workspace";
+  });
+
+  test("returns false and does not add/commit/push when there are no changes", () => {
+    mockedExecFileSync.mockImplementation((_cmd, args) => {
+      const argv = args as Array<string>;
+      if (argv[0] === "status") return "";
+      return "";
+    });
+
+    const pushed = pushFollowUpCommit("Original task");
+
+    expect(pushed).toBe(false);
+    const commands = mockedExecFileSync.mock.calls.map(([, args]) => (args as Array<string>)[0]);
+    expect(commands).toEqual(["status"]);
+  });
+
+  test("commits and pushes to HEAD (not a new branch) when there are changes", () => {
+    mockedExecFileSync.mockImplementation((_cmd, args) => {
+      const argv = args as Array<string>;
+      if (argv[0] === "status") return " M src/foo.ts\n";
+      return "";
+    });
+
+    const pushed = pushFollowUpCommit("Original task", {
+      type: "fix",
+      subject: "address review feedback",
+      branchSlug: "add-x-tests"
+    });
+
+    expect(pushed).toBe(true);
+    expect(mockedExecFileSync).toHaveBeenCalledWith("git", ["add", "-A"], expect.anything());
+    expect(mockedExecFileSync).toHaveBeenCalledWith(
+      "git",
+      ["commit", "-m", "fix: address review feedback"],
+      expect.anything()
+    );
+    expect(mockedExecFileSync).toHaveBeenCalledWith("git", ["push", "origin", "HEAD"], expect.anything());
+  });
+
+  test("falls back to the chore(agent) commit message without commitMetadata", () => {
+    mockedExecFileSync.mockImplementation((_cmd, args) => {
+      const argv = args as Array<string>;
+      if (argv[0] === "status") return " M src/foo.ts\n";
+      return "";
+    });
+
+    pushFollowUpCommit("Original task");
+
+    expect(mockedExecFileSync).toHaveBeenCalledWith(
+      "git",
+      ["commit", "-m", "chore(agent): Original task"],
+      expect.anything()
+    );
   });
 });
