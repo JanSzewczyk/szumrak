@@ -1,8 +1,9 @@
-// Test plan for src/lib/summary.ts — writeStepSummary(message)
+// Test plan for src/lib/summary.ts — writeStepSummary(message, icon?)
 // 1. When GITHUB_STEP_SUMMARY is set, appends a "❌ **Szumrak** — <message>" line
 //    (plus newline) to that path.
 // 2. When GITHUB_STEP_SUMMARY is unset, does nothing (no appendFileSync call).
 // 3. Swallows appendFileSync errors without throwing.
+// 4. A custom icon argument replaces the default "❌" prefix.
 
 import { appendFileSync } from "node:fs";
 
@@ -46,5 +47,17 @@ describe("writeStepSummary", () => {
     const { writeStepSummary } = await import("~/lib/summary");
 
     expect(() => writeStepSummary("boom")).not.toThrow();
+  });
+
+  test("uses a custom icon when provided", async () => {
+    process.env.GITHUB_STEP_SUMMARY = "/tmp/step-summary.md";
+    const { writeStepSummary } = await import("~/lib/summary");
+
+    writeStepSummary("Skipped — an open PR already exists", "ℹ️");
+
+    expect(mockedAppendFileSync).toHaveBeenCalledWith(
+      "/tmp/step-summary.md",
+      "ℹ️ **Szumrak** — Skipped — an open PR already exists\n"
+    );
   });
 });

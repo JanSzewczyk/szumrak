@@ -1,5 +1,6 @@
 import { env } from "./env";
 import { commitAndOpenPR } from "./git";
+import { findOpenPRForTask } from "./lib/dedup";
 import { log } from "./lib/logger";
 import { writeStepSummary } from "./lib/summary";
 import { runAgent } from "./run-agent";
@@ -14,6 +15,18 @@ async function main() {
   }
 
   try {
+    // Deduplication needs REPO/GH_TOKEN to list PRs, both guaranteed present
+    // by the guard above whenever DRY_RUN is off.
+    if (!env.DRY_RUN) {
+      const [owner, repo] = (env.REPO ?? "").split("/");
+      const existingPRUrl = await findOpenPRForTask(owner, repo, env.TASK);
+      if (existingPRUrl) {
+        console.log(`An open PR already exists for this task, skipping: ${existingPRUrl}`);
+        writeStepSummary(`Skipped — an open PR already exists for this task: ${existingPRUrl}`, "ℹ️");
+        return;
+      }
+    }
+
     const result = await runAgent(env.TASK);
 
     if (!result.succeeded) {
