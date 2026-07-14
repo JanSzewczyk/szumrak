@@ -3,6 +3,17 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.4.0](https://github.com/JanSzewczyk/szumrak/compare/v1.3.0...v1.4.0) (2026-07-14)
+
+### Features
+
+* skip the run when an open PR already exists for the task ([b8d1224](https://github.com/JanSzewczyk/szumrak/commit/b8d1224dd0c362c2fe07d62aa87b86007745b059))
+
+### Documentation
+
+* add target-repo-templates/.github/workflows/szumrak.yml as a reference template ([32feeaf](https://github.com/JanSzewczyk/szumrak/commit/32feeaf1c0a844b19992a0962c9ec09b13e9e4fc))
+* bring CLAUDE.md current with the test suite, commit-metadata, and logging changes ([df7aa35](https://github.com/JanSzewczyk/szumrak/commit/df7aa359dead98d1c5872e989d59e49fb8c9af00))
+
 ## [1.3.0](https://github.com/JanSzewczyk/szumrak/compare/v1.2.0...v1.3.0) (2026-07-14)
 
 ### Features
