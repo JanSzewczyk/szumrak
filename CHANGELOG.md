@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.5.0](https://github.com/JanSzewczyk/szumrak/compare/v1.4.0...v1.5.0) (2026-07-14)
+
+### Features
+
+* enable cross-run prompt caching via excludeDynamicSections ([6d7f6f6](https://github.com/JanSzewczyk/szumrak/commit/6d7f6f67ccab6dcd1d7e8b3f6e706a9114c555e2))
+* implement MODE=review-followup for the code-review follow-up loop ([fe39f0a](https://github.com/JanSzewczyk/szumrak/commit/fe39f0a27cd26749e31b767dc28492961d9c159f))
+
+### Documentation
+
+* add review-followup trigger/job to the szumrak.yml reference template ([956885d](https://github.com/JanSzewczyk/szumrak/commit/956885df616f03c52155122ee8dc8ac66337bf7f))
+
+### Code Refactoring
+
+* read all env vars through env.ts, not process.env directly ([1f22e89](https://github.com/JanSzewczyk/szumrak/commit/1f22e89cc08301260f3be832a900a39b1781a753))
+
 ## [1.4.0](https://github.com/JanSzewczyk/szumrak/compare/v1.3.0...v1.4.0) (2026-07-14)
 
 ### Features
