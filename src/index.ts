@@ -1,6 +1,7 @@
 import { env } from "./env";
 import { commitAndOpenPR } from "./git";
 import { log } from "./lib/logger";
+import { writeStepSummary } from "./lib/summary";
 import { runAgent } from "./run-agent";
 
 async function main() {
@@ -18,6 +19,7 @@ async function main() {
     if (!result.succeeded) {
       log("agent_run_failed", { finalMessage: result.finalMessage });
       console.error("The agent did not complete the task successfully.");
+      writeStepSummary(`Task did not complete successfully: ${result.finalMessage.slice(0, 300)}`);
       process.exit(1);
     }
 
@@ -42,6 +44,7 @@ async function main() {
   } catch (err) {
     log("fatal_error", { error: String(err) });
     console.error(err);
+    writeStepSummary(`Fatal error: ${String(err).slice(0, 300)}`);
     process.exit(1);
   }
 }

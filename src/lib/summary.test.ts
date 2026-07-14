@@ -1,0 +1,50 @@
+// Test plan for src/lib/summary.ts — writeStepSummary(message)
+// 1. When GITHUB_STEP_SUMMARY is set, appends a "❌ **Szumrak** — <message>" line
+//    (plus newline) to that path.
+// 2. When GITHUB_STEP_SUMMARY is unset, does nothing (no appendFileSync call).
+// 3. Swallows appendFileSync errors without throwing.
+
+import { appendFileSync } from "node:fs";
+
+vi.mock("node:fs", () => ({
+  appendFileSync: vi.fn()
+}));
+
+const mockedAppendFileSync = vi.mocked(appendFileSync);
+
+describe("writeStepSummary", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    delete process.env.GITHUB_STEP_SUMMARY;
+  });
+
+  test("appends a markdown failure line to GITHUB_STEP_SUMMARY when set", async () => {
+    process.env.GITHUB_STEP_SUMMARY = "/tmp/step-summary.md";
+    const { writeStepSummary } = await import("~/lib/summary");
+
+    writeStepSummary("Task did not complete successfully");
+
+    expect(mockedAppendFileSync).toHaveBeenCalledWith(
+      "/tmp/step-summary.md",
+      "❌ **Szumrak** — Task did not complete successfully\n"
+    );
+  });
+
+  test("does nothing when GITHUB_STEP_SUMMARY is unset", async () => {
+    const { writeStepSummary } = await import("~/lib/summary");
+
+    writeStepSummary("Task did not complete successfully");
+
+    expect(mockedAppendFileSync).not.toHaveBeenCalled();
+  });
+
+  test("swallows appendFileSync errors without throwing", async () => {
+    process.env.GITHUB_STEP_SUMMARY = "/tmp/step-summary.md";
+    mockedAppendFileSync.mockImplementationOnce(() => {
+      throw new Error("EACCES: permission denied");
+    });
+    const { writeStepSummary } = await import("~/lib/summary");
+
+    expect(() => writeStepSummary("boom")).not.toThrow();
+  });
+});
