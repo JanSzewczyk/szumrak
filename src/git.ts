@@ -69,21 +69,56 @@ export async function checkoutExistingBranch(owner: string, repo: string, branch
   git(["pull", "origin", branch]);
 }
 
-const MAX_DIFF_LENGTH = 4000;
+const MAX_FILE_CONTENT = 8000;
+const MAX_TOTAL_CONTENT = 20000;
 
-// Included in the review-followup prompt so the model sees the scope of its
-// own prior changes without re-reading the whole repo. Truncated for the same
-// reason logger.ts truncates long strings — a huge diff is more prompt noise
-// than a diff summary would be. Defaults to the remote-tracking ref, not a
-// bare "main": actions/checkout leaves HEAD detached with no local branch
-// named "main" (only refs/remotes/origin/main), which a real CI run hit and
-// a local test with an actual local "main" branch didn't catch.
-export function diffAgainstBase(baseBranch = "origin/main"): string {
-  const diff = git(["diff", `${baseBranch}...HEAD`]);
-  if (diff.length <= MAX_DIFF_LENGTH) {
-    return diff;
+// Included in the review-followup prompt so the model can address feedback
+// without re-reading the files it already changed — each Read it can skip is a
+// saved turn (the whole reason this is full current content, not a diff). We
+// send the current committed content of every changed file rather than a diff
+// against main: the model is going to *edit* those files, so their present
+// state is what it needs, and a diff would make it re-Read them to see the
+// whole file anyway.
+//
+// Defaults to the remote-tracking ref, not a bare "main": actions/checkout
+// leaves HEAD detached with no local branch named "main" (only
+// refs/remotes/origin/main), which a real CI run hit and a local test with an
+// actual local "main" branch didn't catch. Assumes checkoutExistingBranch
+// already ran, so working-tree == HEAD and `git show HEAD:<path>` is the
+// committed source. Per-file and total caps keep a large branch from blowing
+// up the prompt; anything truncated is annotated so the model knows to Read it.
+export function changedFilesWithContent(baseBranch = "origin/main"): string {
+  const names = git(["diff", "--name-only", `${baseBranch}...HEAD`])
+    .split("\n")
+    .map((name) => name.trim())
+    .filter(Boolean);
+
+  if (names.length === 0) {
+    return "(no files changed against the base branch yet)";
   }
-  return `${diff.slice(0, MAX_DIFF_LENGTH)}\n... [truncated, ${diff.length} chars total]`;
+
+  const sections: Array<string> = [];
+  let total = 0;
+  for (const name of names) {
+    let content: string;
+    try {
+      // A deleted file has no HEAD blob — git show exits non-zero. Skip it
+      // rather than failing the whole prompt build.
+      content = git(["show", `HEAD:${name}`]);
+    } catch {
+      sections.push(`### ${name}\n(deleted)`);
+      continue;
+    }
+
+    if (content.length > MAX_FILE_CONTENT || total + content.length > MAX_TOTAL_CONTENT) {
+      sections.push(`### ${name}\n... [truncated — Read the file for full content]`);
+      continue;
+    }
+    total += content.length;
+    sections.push(`### ${name}\n\`\`\`\n${content}\n\`\`\``);
+  }
+
+  return sections.join("\n\n");
 }
 
 // Follow-up commits land on the PR's existing branch — GitHub updates the

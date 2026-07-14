@@ -1,5 +1,5 @@
 import { env } from "./env";
-import { checkoutExistingBranch, diffAgainstBase, pushFollowUpCommit } from "./git";
+import { changedFilesWithContent, checkoutExistingBranch, pushFollowUpCommit } from "./git";
 import { octokit } from "./lib/github";
 import { log } from "./lib/logger";
 import { appendRunInfo, parseSzumrakMeta, type SzumrakMeta } from "./lib/run-info";
@@ -54,14 +54,14 @@ function getRoundCount(labels: Array<{ name?: string }>): number {
   return 0;
 }
 
-function buildFollowUpTask(branch: string, originalTask: string, diff: string, feedback: string): string {
+function buildFollowUpTask(branch: string, originalTask: string, filesContent: string, feedback: string): string {
   return `You are continuing earlier work on branch ${branch}. Do not start over — modify the existing changes to address the feedback below.
 
 Original task:
 ${originalTask}
 
-Current diff against main:
-${diff}
+Current full content of the files you changed (do not re-read these unless a file is marked truncated):
+${filesContent}
 
 Code review feedback you must address:
 ${feedback}`;
@@ -106,8 +106,8 @@ export async function runReviewFollowUp(
   await checkoutExistingBranch(owner, repo, branch);
 
   const originalTask = extractOriginalTask(pr.body ?? "");
-  const diff = diffAgainstBase();
-  const followUpTask = buildFollowUpTask(branch, originalTask, diff, feedback);
+  const filesContent = changedFilesWithContent();
+  const followUpTask = buildFollowUpTask(branch, originalTask, filesContent, feedback);
 
   // The flattened task/diff/feedback prompt above is always sent, resumed
   // session or not — that's the safety net. If resume succeeds, the model

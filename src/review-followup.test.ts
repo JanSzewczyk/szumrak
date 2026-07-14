@@ -18,14 +18,14 @@
 // 7. Missing/unparsable original task in the PR body: falls back to a placeholder
 //    string instead of throwing.
 
-import { checkoutExistingBranch, diffAgainstBase, pushFollowUpCommit } from "~/git";
+import { changedFilesWithContent, checkoutExistingBranch, pushFollowUpCommit } from "~/git";
 import { octokit } from "~/lib/github";
 import { runReviewFollowUp } from "~/review-followup";
 import { runAgent } from "~/run-agent";
 
 vi.mock("~/git", () => ({
   checkoutExistingBranch: vi.fn(),
-  diffAgainstBase: vi.fn(),
+  changedFilesWithContent: vi.fn(),
   pushFollowUpCommit: vi.fn()
 }));
 
@@ -53,7 +53,7 @@ const mockedPullsUpdate = vi.mocked(octokit.pulls.update);
 const mockedAddLabels = vi.mocked(octokit.issues.addLabels);
 const mockedRemoveLabel = vi.mocked(octokit.issues.removeLabel);
 const mockedCheckoutExistingBranch = vi.mocked(checkoutExistingBranch);
-const mockedDiffAgainstBase = vi.mocked(diffAgainstBase);
+const mockedChangedFilesWithContent = vi.mocked(changedFilesWithContent);
 const mockedPushFollowUpCommit = vi.mocked(pushFollowUpCommit);
 const mockedRunAgent = vi.mocked(runAgent);
 
@@ -70,7 +70,7 @@ describe("runReviewFollowUp", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.DRY_RUN;
-    mockedDiffAgainstBase.mockReturnValue("diff --git a/foo.ts b/foo.ts\n+added line\n");
+    mockedChangedFilesWithContent.mockReturnValue("### utils/foo.ts\n```\nexport const foo = 1;\n```");
     mockedRunAgent.mockResolvedValue({
       toolCalls: [],
       finalMessage: "Addressed the feedback",
@@ -104,7 +104,8 @@ describe("runReviewFollowUp", () => {
     const followUpTask = mockedRunAgent.mock.calls[0]?.[0] as string;
     expect(followUpTask).toContain("test/add-x-tests-abc123");
     expect(followUpTask).toContain("Add unit tests for parseSearchParams");
-    expect(followUpTask).toContain("diff --git a/foo.ts b/foo.ts");
+    expect(followUpTask).toContain("### utils/foo.ts");
+    expect(followUpTask).toContain("export const foo = 1;");
     expect(followUpTask).toContain("Please add error handling");
 
     expect(mockedPushFollowUpCommit).toHaveBeenCalledWith("Add unit tests for parseSearchParams", {

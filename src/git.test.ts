@@ -22,7 +22,7 @@
 //    created PR's issue_number.
 
 import { execFileSync } from "node:child_process";
-import { checkoutExistingBranch, commitAndOpenPR, diffAgainstBase, parseRepo, pushFollowUpCommit } from "~/git";
+import { changedFilesWithContent, checkoutExistingBranch, commitAndOpenPR, parseRepo, pushFollowUpCommit } from "~/git";
 import { octokit } from "~/lib/github";
 
 vi.mock("node:child_process", () => ({
@@ -288,36 +288,88 @@ describe("checkoutExistingBranch", () => {
   });
 });
 
-describe("diffAgainstBase", () => {
+describe("changedFilesWithContent", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env.WORKSPACE_PATH = "/workspace";
   });
 
-  test("returns the diff against the default base branch (origin/main)", () => {
-    mockedExecFileSync.mockReturnValue("diff --git a/foo.ts b/foo.ts\n+added line\n");
+  // Helper: name-only list from the first `git diff --name-only` call, then
+  // `git show HEAD:<path>` for each named file, keyed by path.
+  function mockGit(names: Array<string>, contentByPath: Record<string, string | Error>) {
+    mockedExecFileSync.mockImplementation((_cmd, args) => {
+      const argv = args as Array<string>;
+      if (argv[0] === "diff" && argv[1] === "--name-only") {
+        return names.join("\n");
+      }
+      if (argv[0] === "show") {
+        const path = argv[1].replace(/^HEAD:/, "");
+        const value = contentByPath[path];
+        if (value instanceof Error) throw value;
+        return value ?? "";
+      }
+      return "";
+    });
+  }
 
-    const diff = diffAgainstBase();
+  test("lists the name-only diff against the default base branch (origin/main)", () => {
+    mockGit(["a.ts"], { "a.ts": "export const a = 1;\n" });
 
-    expect(diff).toBe("diff --git a/foo.ts b/foo.ts\n+added line\n");
-    expect(mockedExecFileSync).toHaveBeenCalledWith("git", ["diff", "origin/main...HEAD"], expect.anything());
+    changedFilesWithContent();
+
+    expect(mockedExecFileSync).toHaveBeenCalledWith(
+      "git",
+      ["diff", "--name-only", "origin/main...HEAD"],
+      expect.anything()
+    );
   });
 
-  test("truncates a diff longer than the length cap", () => {
-    const hugeDiff = "x".repeat(5000);
-    mockedExecFileSync.mockReturnValue(hugeDiff);
+  test("returns each changed file's current content under a path header", () => {
+    mockGit(["a.ts", "b.ts"], { "a.ts": "export const a = 1;\n", "b.ts": "export const b = 2;\n" });
 
-    const diff = diffAgainstBase();
+    const result = changedFilesWithContent();
 
-    expect(diff).toBe(`${"x".repeat(4000)}\n... [truncated, 5000 chars total]`);
+    expect(result).toContain("### a.ts");
+    expect(result).toContain("export const a = 1;");
+    expect(result).toContain("### b.ts");
+    expect(result).toContain("export const b = 2;");
+  });
+
+  test("annotates a file over the per-file cap as truncated instead of inlining it", () => {
+    mockGit(["big.ts"], { "big.ts": "x".repeat(9000) });
+
+    const result = changedFilesWithContent();
+
+    expect(result).toContain("### big.ts");
+    expect(result).toContain("[truncated — Read the file for full content]");
+    expect(result).not.toContain("x".repeat(9000));
+  });
+
+  test("marks a deleted file (no HEAD blob) instead of throwing", () => {
+    mockGit(["gone.ts"], { "gone.ts": new Error("fatal: path 'gone.ts' does not exist in 'HEAD'") });
+
+    const result = changedFilesWithContent();
+
+    expect(result).toContain("### gone.ts");
+    expect(result).toContain("(deleted)");
+  });
+
+  test("returns a placeholder when nothing changed against the base branch", () => {
+    mockGit([], {});
+
+    expect(changedFilesWithContent()).toBe("(no files changed against the base branch yet)");
   });
 
   test("accepts a custom base branch", () => {
-    mockedExecFileSync.mockReturnValue("");
+    mockGit(["a.ts"], { "a.ts": "x" });
 
-    diffAgainstBase("develop");
+    changedFilesWithContent("develop");
 
-    expect(mockedExecFileSync).toHaveBeenCalledWith("git", ["diff", "develop...HEAD"], expect.anything());
+    expect(mockedExecFileSync).toHaveBeenCalledWith(
+      "git",
+      ["diff", "--name-only", "develop...HEAD"],
+      expect.anything()
+    );
   });
 });
 
