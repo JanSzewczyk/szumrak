@@ -28,6 +28,13 @@ describe("logger", () => {
     vi.clearAllMocks();
   });
 
+  // Every test below spies on console.log; restoring here (rather than a
+  // per-test consoleSpy.mockRestore()) means a test can't forget to and
+  // silence console.log for whichever test happens to run next.
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   describe("log", () => {
     test("writes a JSON line to console.log containing timestamp, event and data", async () => {
       const { log } = await import("~/platform/logger");
@@ -40,8 +47,6 @@ describe("logger", () => {
       expect(written).toMatchObject({ event: "agent_start", task: "do the thing" });
       expect(typeof written.ts).toBe("string");
       expect(new Date(written.ts).toISOString()).toBe(written.ts);
-
-      consoleSpy.mockRestore();
     });
 
     test("defaults data to an empty object when omitted", async () => {
@@ -52,8 +57,6 @@ describe("logger", () => {
 
       const written = JSON.parse(consoleSpy.mock.calls[0]?.[0] as string);
       expect(written).toEqual({ ts: written.ts, event: "no_changes" });
-
-      consoleSpy.mockRestore();
     });
 
     test("appends the same entry (plus newline) to the log file at the derived LOG_PATH", async () => {
@@ -97,8 +100,6 @@ describe("logger", () => {
 
       expect(() => log("agent_end", { succeeded: true })).not.toThrow();
       expect(consoleSpy).toHaveBeenCalledTimes(1);
-
-      consoleSpy.mockRestore();
     });
 
     test.each([
@@ -118,8 +119,6 @@ describe("logger", () => {
       const written = JSON.parse(consoleSpy.mock.calls[0]?.[0] as string);
       expect(JSON.stringify(written)).not.toContain(secret);
       expect(written.input.nested[0].content).toBe("before [REDACTED] after");
-
-      consoleSpy.mockRestore();
     });
 
     test("truncates strings longer than the length cap instead of logging full file content", async () => {
@@ -132,8 +131,6 @@ describe("logger", () => {
       const written = JSON.parse(consoleSpy.mock.calls[0]?.[0] as string);
       expect(written.input.file_path).toBe("src/foo.ts");
       expect(written.input.content).toBe(`${"x".repeat(500)}... [truncated, 1000 chars total]`);
-
-      consoleSpy.mockRestore();
     });
 
     test("leaves short strings and non-string values unchanged", async () => {
@@ -144,8 +141,6 @@ describe("logger", () => {
 
       const written = JSON.parse(consoleSpy.mock.calls[0]?.[0] as string);
       expect(written.input).toEqual({ path: "src/foo.ts", count: 3, ok: true, missing: null });
-
-      consoleSpy.mockRestore();
     });
   });
 });

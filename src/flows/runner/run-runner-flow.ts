@@ -8,12 +8,18 @@ import { log } from "~/platform/logger";
 import { writeStepSummary } from "~/platform/summary";
 import type { FlowResult } from "../types";
 
+export interface RunnerFlowInput {
+  task: string;
+}
+
 // The runner flow: given a natural-language task, run the agent against
 // WORKSPACE_PATH and (unless DRY_RUN) open a PR with the result. This is the
 // flow behind MODE=runner (env.MODE === Mode.RUNNER) — the "do this task from
 // scratch" entry point, as opposed to flows/review-followup which continues
-// work on an existing PR.
-export async function runRunnerFlow(task: string): Promise<FlowResult> {
+// work on an existing PR. Takes a single input object (not a positional
+// `task: string`) so flows/registry.ts can assign it directly into the
+// registry without wrapping/casting anything.
+export async function runRunnerFlow({ task }: RunnerFlowInput): Promise<FlowResult> {
   // Deduplication needs REPO + GitHub App credentials to list PRs, both
   // guaranteed present by index.ts's env guard whenever DRY_RUN is off.
   if (!env.DRY_RUN) {

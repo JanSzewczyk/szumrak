@@ -1,4 +1,4 @@
-// Test plan for src/flows/review-followup/run-review-followup-flow.ts — runReviewFollowUp(owner, repo, prNumber, feedback)
+// Test plan for src/flows/review-followup/run-review-followup-flow.ts — runReviewFollowUp({ owner, repo, prNumber, reviewFeedback })
 // 1. Round limit: when the PR's "review-round-N" label already reads the max (3),
 //    skips entirely (no checkout, no runAgent call), writes a warning step summary,
 //    and returns { succeeded: false }.
@@ -20,10 +20,18 @@
 // 8. Writes the cost/round table back to the PR body via pulls.update after a
 //    successful round, and never fails the round when that update rejects.
 
+import { faker } from "@faker-js/faker";
+import type { CommitMetadata } from "~/agent/commit-metadata";
 import { runAgent } from "~/agent/run-agent";
 import { runReviewFollowUp } from "~/flows/review-followup/run-review-followup-flow";
 import { octokit } from "~/github/client";
 import { changedFilesWithContent, checkoutExistingBranch, pushFollowUpCommit } from "~/github/git-operations";
+import { agentRunResultBuilder } from "~/test/builders/agent-run-result.builder";
+import { commitMetadataBuilder } from "~/test/builders/commit-metadata.builder";
+import {
+  buildReviewFollowUpPrBody,
+  reviewFollowUpPullRequestBuilder
+} from "~/test/builders/review-followup-pull-request.builder";
 
 vi.mock("~/github/git-operations", () => ({
   checkoutExistingBranch: vi.fn(),
@@ -59,26 +67,23 @@ const mockedChangedFilesWithContent = vi.mocked(changedFilesWithContent);
 const mockedPushFollowUpCommit = vi.mocked(pushFollowUpCommit);
 const mockedRunAgent = vi.mocked(runAgent);
 
-function pr(overrides: Record<string, unknown> = {}) {
-  return {
-    head: { ref: "test/add-x-tests-abc123" },
-    body: "Task:\nAdd unit tests for parseSearchParams\n\nGenerated automatically by Szumrak.\n\nModel summary:\ndone",
-    labels: [],
-    ...overrides
-  };
-}
-
 describe("runReviewFollowUp", () => {
+  let originalTask: string;
+  let defaultCommitMetadata: CommitMetadata;
+
   beforeEach(() => {
     vi.clearAllMocks();
     delete process.env.DRY_RUN;
-    mockedChangedFilesWithContent.mockReturnValue("### utils/foo.ts\n```\nexport const foo = 1;\n```");
-    mockedRunAgent.mockResolvedValue({
-      toolCalls: [],
-      finalMessage: "Addressed the feedback",
-      succeeded: true,
-      commitMetadata: { type: "fix", subject: "address review feedback", branchSlug: "add-x-tests" }
+    originalTask = faker.lorem.sentence();
+    defaultCommitMetadata = commitMetadataBuilder.one({
+      overrides: { type: "fix", subject: "address review feedback", branchSlug: "add-x-tests" }
     });
+    mockedChangedFilesWithContent.mockReturnValue("### utils/foo.ts\n```\nexport const foo = 1;\n```");
+    mockedRunAgent.mockResolvedValue(
+      agentRunResultBuilder.one({
+        overrides: { finalMessage: "Addressed the feedback", commitMetadata: defaultCommitMetadata }
+      })
+    );
     mockedPushFollowUpCommit.mockReturnValue(true);
     mockedAddLabels.mockResolvedValue({} as never);
     mockedRemoveLabel.mockResolvedValue({} as never);
@@ -86,9 +91,16 @@ describe("runReviewFollowUp", () => {
   });
 
   test("skips entirely once the PR already hit the round limit", async () => {
-    mockedPullsGet.mockResolvedValue({ data: pr({ labels: [{ name: "review-round-3" }] }) } as never);
+    mockedPullsGet.mockResolvedValue({
+      data: reviewFollowUpPullRequestBuilder.one({ overrides: { labels: [{ name: "review-round-3" }] } })
+    } as never);
 
-    const result = await runReviewFollowUp("acme", "widgets", 42, "Please add error handling");
+    const result = await runReviewFollowUp({
+      owner: "acme",
+      repo: "widgets",
+      prNumber: 42,
+      reviewFeedback: "Please add error handling"
+    });
 
     expect(result).toEqual({ succeeded: false });
     expect(mockedCheckoutExistingBranch).not.toHaveBeenCalled();
@@ -96,25 +108,35 @@ describe("runReviewFollowUp", () => {
   });
 
   test("checks out the PR branch, runs the agent, pushes, and bumps the round label", async () => {
-    mockedPullsGet.mockResolvedValue({ data: pr({ labels: [{ name: "review-round-1" }] }) } as never);
+    const branch = faker.git.branch();
+    mockedPullsGet.mockResolvedValue({
+      data: reviewFollowUpPullRequestBuilder.one({
+        overrides: {
+          head: { ref: branch },
+          body: buildReviewFollowUpPrBody(originalTask),
+          labels: [{ name: "review-round-1" }]
+        }
+      })
+    } as never);
 
-    const result = await runReviewFollowUp("acme", "widgets", 42, "Please add error handling");
+    const result = await runReviewFollowUp({
+      owner: "acme",
+      repo: "widgets",
+      prNumber: 42,
+      reviewFeedback: "Please add error handling"
+    });
 
     expect(result).toEqual({ succeeded: true });
-    expect(mockedCheckoutExistingBranch).toHaveBeenCalledWith("acme", "widgets", "test/add-x-tests-abc123");
+    expect(mockedCheckoutExistingBranch).toHaveBeenCalledWith("acme", "widgets", branch);
 
     const followUpTask = mockedRunAgent.mock.calls[0]?.[0] as string;
-    expect(followUpTask).toContain("test/add-x-tests-abc123");
-    expect(followUpTask).toContain("Add unit tests for parseSearchParams");
+    expect(followUpTask).toContain(branch);
+    expect(followUpTask).toContain(originalTask);
     expect(followUpTask).toContain("### utils/foo.ts");
     expect(followUpTask).toContain("export const foo = 1;");
     expect(followUpTask).toContain("Please add error handling");
 
-    expect(mockedPushFollowUpCommit).toHaveBeenCalledWith("Add unit tests for parseSearchParams", {
-      type: "fix",
-      subject: "address review feedback",
-      branchSlug: "add-x-tests"
-    });
+    expect(mockedPushFollowUpCommit).toHaveBeenCalledWith(originalTask, defaultCommitMetadata);
     expect(mockedRemoveLabel).toHaveBeenCalledWith({
       owner: "acme",
       repo: "widgets",
@@ -130,9 +152,11 @@ describe("runReviewFollowUp", () => {
   });
 
   test("treats a PR with no round label as round 0, adding review-round-1 without removing anything", async () => {
-    mockedPullsGet.mockResolvedValue({ data: pr({ labels: [] }) } as never);
+    mockedPullsGet.mockResolvedValue({
+      data: reviewFollowUpPullRequestBuilder.one({ overrides: { labels: [] } })
+    } as never);
 
-    await runReviewFollowUp("acme", "widgets", 42, "feedback");
+    await runReviewFollowUp({ owner: "acme", repo: "widgets", prNumber: 42, reviewFeedback: "feedback" });
 
     expect(mockedRemoveLabel).not.toHaveBeenCalled();
     expect(mockedAddLabels).toHaveBeenCalledWith({
@@ -144,14 +168,20 @@ describe("runReviewFollowUp", () => {
   });
 
   test("returns failure without pushing or bumping the label when the agent run fails", async () => {
-    mockedPullsGet.mockResolvedValue({ data: pr() } as never);
-    mockedRunAgent.mockResolvedValue({
-      toolCalls: [],
-      finalMessage: "Could not resolve the merge conflict",
-      succeeded: false
-    });
+    mockedPullsGet.mockResolvedValue({ data: reviewFollowUpPullRequestBuilder.one() } as never);
+    mockedRunAgent.mockResolvedValue(
+      agentRunResultBuilder.one({
+        traits: "failed",
+        overrides: { finalMessage: "Could not resolve the merge conflict" }
+      })
+    );
 
-    const result = await runReviewFollowUp("acme", "widgets", 42, "feedback");
+    const result = await runReviewFollowUp({
+      owner: "acme",
+      repo: "widgets",
+      prNumber: 42,
+      reviewFeedback: "feedback"
+    });
 
     expect(result).toEqual({ succeeded: false });
     expect(mockedPushFollowUpCommit).not.toHaveBeenCalled();
@@ -160,9 +190,14 @@ describe("runReviewFollowUp", () => {
 
   test("DRY_RUN skips pushing the commit and updating the round label", async () => {
     process.env.DRY_RUN = "true";
-    mockedPullsGet.mockResolvedValue({ data: pr() } as never);
+    mockedPullsGet.mockResolvedValue({ data: reviewFollowUpPullRequestBuilder.one() } as never);
 
-    const result = await runReviewFollowUp("acme", "widgets", 42, "feedback");
+    const result = await runReviewFollowUp({
+      owner: "acme",
+      repo: "widgets",
+      prNumber: 42,
+      reviewFeedback: "feedback"
+    });
 
     expect(result).toEqual({ succeeded: true });
     expect(mockedPushFollowUpCommit).not.toHaveBeenCalled();
@@ -170,36 +205,45 @@ describe("runReviewFollowUp", () => {
   });
 
   test("skips the round-label update when there were no changes to push", async () => {
-    mockedPullsGet.mockResolvedValue({ data: pr() } as never);
+    mockedPullsGet.mockResolvedValue({ data: reviewFollowUpPullRequestBuilder.one() } as never);
     mockedPushFollowUpCommit.mockReturnValue(false);
 
-    const result = await runReviewFollowUp("acme", "widgets", 42, "feedback");
+    const result = await runReviewFollowUp({
+      owner: "acme",
+      repo: "widgets",
+      prNumber: 42,
+      reviewFeedback: "feedback"
+    });
 
     expect(result).toEqual({ succeeded: true });
     expect(mockedAddLabels).not.toHaveBeenCalled();
   });
 
   test("falls back to a placeholder when the original task can't be parsed from the PR body", async () => {
-    mockedPullsGet.mockResolvedValue({ data: pr({ body: "This PR body has no Task: marker." }) } as never);
+    mockedPullsGet.mockResolvedValue({
+      data: reviewFollowUpPullRequestBuilder.one({ overrides: { body: "This PR body has no Task: marker." } })
+    } as never);
 
-    await runReviewFollowUp("acme", "widgets", 42, "feedback");
+    await runReviewFollowUp({ owner: "acme", repo: "widgets", prNumber: 42, reviewFeedback: "feedback" });
 
     const followUpTask = mockedRunAgent.mock.calls[0]?.[0] as string;
     expect(followUpTask).toContain("original task unavailable");
   });
 
   test("writes the cost/round table back to the PR body via pulls.update after a successful round", async () => {
-    mockedPullsGet.mockResolvedValue({ data: pr() } as never);
-    mockedRunAgent.mockResolvedValue({
-      toolCalls: [],
-      finalMessage: "Addressed the feedback",
-      succeeded: true,
-      totalCostUsd: 0.12,
-      numTurns: 4,
-      commitMetadata: { type: "fix", subject: "address review feedback", branchSlug: "add-x-tests" }
-    });
+    mockedPullsGet.mockResolvedValue({ data: reviewFollowUpPullRequestBuilder.one() } as never);
+    mockedRunAgent.mockResolvedValue(
+      agentRunResultBuilder.one({
+        overrides: {
+          finalMessage: "Addressed the feedback",
+          totalCostUsd: 0.12,
+          numTurns: 4,
+          commitMetadata: defaultCommitMetadata
+        }
+      })
+    );
 
-    await runReviewFollowUp("acme", "widgets", 42, "feedback");
+    await runReviewFollowUp({ owner: "acme", repo: "widgets", prNumber: 42, reviewFeedback: "feedback" });
 
     expect(mockedPullsUpdate).toHaveBeenCalledTimes(1);
     const updateBody = mockedPullsUpdate.mock.calls[0]?.[0]?.body as string;
@@ -209,18 +253,25 @@ describe("runReviewFollowUp", () => {
   });
 
   test("does not fail the round when pulls.update rejects", async () => {
-    mockedPullsGet.mockResolvedValue({ data: pr() } as never);
-    mockedRunAgent.mockResolvedValue({
-      toolCalls: [],
-      finalMessage: "Addressed the feedback",
-      succeeded: true,
-      totalCostUsd: 0.12,
-      numTurns: 4,
-      commitMetadata: { type: "fix", subject: "address review feedback", branchSlug: "add-x-tests" }
-    });
+    mockedPullsGet.mockResolvedValue({ data: reviewFollowUpPullRequestBuilder.one() } as never);
+    mockedRunAgent.mockResolvedValue(
+      agentRunResultBuilder.one({
+        overrides: {
+          finalMessage: "Addressed the feedback",
+          totalCostUsd: 0.12,
+          numTurns: 4,
+          commitMetadata: defaultCommitMetadata
+        }
+      })
+    );
     mockedPullsUpdate.mockRejectedValue(new Error("API hiccup"));
 
-    const result = await runReviewFollowUp("acme", "widgets", 42, "feedback");
+    const result = await runReviewFollowUp({
+      owner: "acme",
+      repo: "widgets",
+      prNumber: 42,
+      reviewFeedback: "feedback"
+    });
 
     expect(result).toEqual({ succeeded: true });
   });

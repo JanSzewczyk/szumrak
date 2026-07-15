@@ -1,24 +1,25 @@
 import { Mode } from "~/types/mode";
-import { runReviewFollowUp } from "./review-followup/run-review-followup-flow";
-import { runRunnerFlow } from "./runner/run-runner-flow";
+import { type ReviewFollowUpFlowInput, runReviewFollowUp } from "./review-followup/run-review-followup-flow";
+import { type RunnerFlowInput, runRunnerFlow } from "./runner/run-runner-flow";
 import type { FlowResult } from "./types";
 
-// Shared shape every flow's runner is invoked with — a superset of what any
-// single flow needs today. Adding a flow that needs a genuinely new input
-// means adding a field here, not changing every existing flow's signature.
-export interface FlowContext {
-  task?: string;
-  owner?: string;
-  repo?: string;
-  prNumber?: number;
-  reviewFeedback?: string;
-}
+// Maps each Mode to the exact input its flow needs — not a shared/loosely
+// optional blob every flow's runner has to destructure and cast. Adding a
+// flow means adding its own `<Flow>Input` type here (exported next to the
+// flow's own `run` function) and a matching entry below.
+type FlowInputByMode = {
+  [Mode.RUNNER]: RunnerFlowInput;
+  [Mode.REVIEW_FOLLOWUP]: ReviewFollowUpFlowInput;
+};
 
-// The single place that maps a Mode to the flow that handles it. Typed as
-// Record<Mode, ...> so adding a new value to Mode (types/mode.ts) without a
-// matching entry here is a compile error, not a silent no-op at runtime.
-export const flowRegistry: Record<Mode, (ctx: FlowContext) => Promise<FlowResult>> = {
-  [Mode.RUNNER]: (ctx) => runRunnerFlow(ctx.task as string),
-  [Mode.REVIEW_FOLLOWUP]: (ctx) =>
-    runReviewFollowUp(ctx.owner as string, ctx.repo as string, ctx.prNumber as number, ctx.reviewFeedback as string)
+// The single place that maps a Mode to the flow that handles it. Typed so
+// each entry's input type is exactly what that mode's flow function expects
+// (via FlowInputByMode) — callers (index.ts) get full type-checking on the
+// object they pass in, with no `as string`/`as number` casts anywhere in the
+// chain. Also still a `Record`-shaped mapped type over `Mode`, so adding a
+// value to `Mode` without a matching entry here is a compile error, not a
+// silent no-op at runtime.
+export const flowRegistry: { [M in Mode]: (input: FlowInputByMode[M]) => Promise<FlowResult> } = {
+  [Mode.RUNNER]: runRunnerFlow,
+  [Mode.REVIEW_FOLLOWUP]: runReviewFollowUp
 };

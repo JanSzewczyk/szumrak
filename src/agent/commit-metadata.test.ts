@@ -12,6 +12,10 @@ vi.mock("~/platform/logger", () => ({
 }));
 
 describe("parseCommitMetadata", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   test("parses a trailing commit block into CommitMetadata", () => {
     const finalText = [
       "I added a test file covering the edge cases.",

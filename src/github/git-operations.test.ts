@@ -21,6 +21,7 @@
 
 import { execFileSync } from "node:child_process";
 import { changedFilesWithContent, checkoutExistingBranch, pushFollowUpCommit } from "~/github/git-operations";
+import { commitMetadataBuilder } from "~/test/builders/commit-metadata.builder";
 
 vi.mock("node:child_process", () => ({
   execFileSync: vi.fn()
@@ -179,11 +180,12 @@ describe("pushFollowUpCommit", () => {
       return "";
     });
 
-    const pushed = pushFollowUpCommit("Original task", {
-      type: "fix",
-      subject: "address review feedback",
-      branchSlug: "add-x-tests"
-    });
+    const pushed = pushFollowUpCommit(
+      "Original task",
+      commitMetadataBuilder.one({
+        overrides: { type: "fix", subject: "address review feedback", branchSlug: "add-x-tests", scope: undefined }
+      })
+    );
 
     expect(pushed).toBe(true);
     expect(mockedExecFileSync).toHaveBeenCalledWith("git", ["add", "-A"], expect.anything());

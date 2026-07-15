@@ -28,6 +28,8 @@ import { execFileSync } from "node:child_process";
 import { octokit } from "~/github/client";
 import { commitAndOpenPR } from "~/github/pull-requests";
 import { parseRepo } from "~/github/repo";
+import { commitMetadataBuilder } from "~/test/builders/commit-metadata.builder";
+import { pullsCreateResponseBuilder } from "~/test/builders/pulls-create-response.builder";
 
 vi.mock("node:child_process", () => ({
   execFileSync: vi.fn()
@@ -105,14 +107,13 @@ describe("commitAndOpenPR", () => {
       if (argv[0] === "status") return " M src/foo.ts\n";
       return "";
     });
-    mockedPullsCreate.mockResolvedValue({
-      data: { number: 42, html_url: "https://github.com/acme/widgets/pull/42" }
-    } as never);
+    const pullsCreateResponse = pullsCreateResponseBuilder.one();
+    mockedPullsCreate.mockResolvedValue(pullsCreateResponse as never);
     mockedAddLabels.mockResolvedValue({} as never);
 
     const result = await commitAndOpenPR("Fix the annoying bug", "PR body");
 
-    expect(result).toBe("https://github.com/acme/widgets/pull/42");
+    expect(result).toBe(pullsCreateResponse.data.html_url);
 
     const commands = mockedExecFileSync.mock.calls.map(([, args]) => (args as Array<string>)[0]);
     expect(commands).toEqual(["remote", "checkout", "status", "add", "commit", "push"]);
@@ -141,7 +142,7 @@ describe("commitAndOpenPR", () => {
     expect(mockedAddLabels).toHaveBeenCalledWith({
       owner: "acme",
       repo: "widgets",
-      issue_number: 42,
+      issue_number: pullsCreateResponse.data.number,
       labels: ["ai-generated"]
     });
   });
@@ -153,9 +154,7 @@ describe("commitAndOpenPR", () => {
       if (argv[0] === "status") return " M src/foo.ts\n";
       return "";
     });
-    mockedPullsCreate.mockResolvedValue({
-      data: { number: 1, html_url: "https://github.com/acme/widgets/pull/1" }
-    } as never);
+    mockedPullsCreate.mockResolvedValue(pullsCreateResponseBuilder.one() as never);
     mockedAddLabels.mockResolvedValue({} as never);
 
     await commitAndOpenPR(longSummary, "body");
@@ -178,19 +177,24 @@ describe("commitAndOpenPR", () => {
       if (argv[0] === "status") return " M utils/search-params.test.ts\n";
       return "";
     });
-    mockedPullsCreate.mockResolvedValue({
-      data: { number: 7, html_url: "https://github.com/acme/widgets/pull/7" }
-    } as never);
+    const pullsCreateResponse = pullsCreateResponseBuilder.one();
+    mockedPullsCreate.mockResolvedValue(pullsCreateResponse as never);
     mockedAddLabels.mockResolvedValue({} as never);
 
-    const result = await commitAndOpenPR("Add tests for search params", "PR body", {
-      type: "test",
-      scope: "search-params",
-      subject: "add unit tests for parseSearchParams",
-      branchSlug: "add-search-params-tests"
-    });
+    const result = await commitAndOpenPR(
+      "Add tests for search params",
+      "PR body",
+      commitMetadataBuilder.one({
+        overrides: {
+          type: "test",
+          scope: "search-params",
+          subject: "add unit tests for parseSearchParams",
+          branchSlug: "add-search-params-tests"
+        }
+      })
+    );
 
-    expect(result).toBe("https://github.com/acme/widgets/pull/7");
+    expect(result).toBe(pullsCreateResponse.data.html_url);
     expect(mockedExecFileSync).toHaveBeenCalledWith(
       "git",
       ["commit", "-m", "test(search-params): add unit tests for parseSearchParams"],
@@ -207,16 +211,21 @@ describe("commitAndOpenPR", () => {
       if (argv[0] === "status") return " M README.md\n";
       return "";
     });
-    mockedPullsCreate.mockResolvedValue({
-      data: { number: 8, html_url: "https://github.com/acme/widgets/pull/8" }
-    } as never);
+    mockedPullsCreate.mockResolvedValue(pullsCreateResponseBuilder.one() as never);
     mockedAddLabels.mockResolvedValue({} as never);
 
-    await commitAndOpenPR("Update docs", "PR body", {
-      type: "docs",
-      subject: "clarify setup instructions",
-      branchSlug: "clarify-setup-docs"
-    });
+    await commitAndOpenPR(
+      "Update docs",
+      "PR body",
+      commitMetadataBuilder.one({
+        overrides: {
+          type: "docs",
+          subject: "clarify setup instructions",
+          branchSlug: "clarify-setup-docs",
+          scope: undefined
+        }
+      })
+    );
 
     expect(mockedExecFileSync).toHaveBeenCalledWith(
       "git",
