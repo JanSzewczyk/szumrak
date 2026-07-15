@@ -1,21 +1,3 @@
-// Test plan for src/platform/logger.ts
-// 1. log() writes a JSON line to console.log with ts/event/data merged in.
-// 2. log() calls appendFileSync with the derived LOG_PATH and a trailing newline.
-// 3. log() defaults `data` to {} when omitted, still producing valid JSON.
-// 4. log() swallows appendFileSync errors (try/catch) — console.log must still fire
-//    and the function must not throw.
-// 5. LOG_PATH is derived from env.AGENT_LOG_PATH when set (module-load-time behavior),
-//    otherwise falls back to join(env.WORKSPACE_PATH, "agent-run.jsonl"). Verified via
-//    two isolated module loads (vi.resetModules + dynamic import) since LOG_PATH is
-//    computed once at import time.
-// 6. Strings matching known secret patterns (sk-ant-, AKIA, ghp_, PEM private key
-//    blocks, etc.) are replaced with "[REDACTED]", including when nested inside
-//    arrays/objects.
-// 7. Strings longer than the length cap are truncated with a "[truncated, N chars
-//    total]" suffix instead of being logged in full (e.g. a Write tool's file content).
-// 8. Short strings and non-string values (numbers, booleans, null) pass through
-//    unchanged.
-
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -28,9 +10,11 @@ describe("logger", () => {
     vi.clearAllMocks();
   });
 
-  // Every test below spies on console.log; restoring here (rather than a
-  // per-test consoleSpy.mockRestore()) means a test can't forget to and
-  // silence console.log for whichever test happens to run next.
+  /**
+   * Every test below spies on console.log; restoring here (rather than a
+   * per-test consoleSpy.mockRestore()) means a test can't forget to and
+   * silence console.log for whichever test happens to run next.
+   */
   afterEach(() => {
     vi.restoreAllMocks();
   });

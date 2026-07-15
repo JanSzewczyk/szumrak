@@ -31,10 +31,13 @@ export async function commitAndOpenPR(
   const pr = await octokit.pulls.create({
     owner,
     repo,
-    // GitHub's default squash-merge uses the PR title as the final commit
-    // message on the base branch, which is what craft-flow's semantic-release
-    // actually parses — so this needs to be the real Conventional Commits
-    // subject, not a human-readable label like "[agent] <task>".
+    /**
+     * GitHub's default squash-merge uses the PR title as the final commit
+     * message on the base branch, which is what craft-flow's
+     * semantic-release actually parses — so this needs to be the real
+     * Conventional Commits subject, not a human-readable label like
+     * "[agent] <task>".
+     */
     title: commitMessage,
     body,
     head: branch,

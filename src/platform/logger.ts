@@ -2,18 +2,22 @@ import { appendFileSync } from "node:fs";
 import { join } from "node:path";
 import { env } from "~/platform/env";
 
-// Derived from WORKSPACE_PATH by default (not hardcoded to "/workspace"):
-// otherwise, in Level 1 testing (no Docker, WORKSPACE_PATH pointing at a local
-// checkout), the write would fail silently in the try/catch below and drop the
-// logs in exactly the scenario they are meant to serve.
+/**
+ * Derived from WORKSPACE_PATH by default (not hardcoded to "/workspace"):
+ * otherwise, in Level 1 testing (no Docker, WORKSPACE_PATH pointing at a
+ * local checkout), the write would fail silently in the try/catch below and
+ * drop the logs in exactly the scenario they are meant to serve.
+ */
 const LOG_PATH = env.AGENT_LOG_PATH ?? join(env.WORKSPACE_PATH, "agent-run.jsonl");
 
-// agent-run.jsonl is uploaded as a CI artifact (readable by anyone with
-// repo/Actions access), so it must never carry a live credential even if the
-// agent-permissions.json denylist fails to keep the agent away from one
-// (e.g. a key hardcoded in application code rather than an env file). Matches
-// the common vendor token shapes, not a generic entropy heuristic — see
-// Notion page 12.
+/**
+ * agent-run.jsonl is uploaded as a CI artifact (readable by anyone with
+ * repo/Actions access), so it must never carry a live credential even if the
+ * agent-permissions.json denylist fails to keep the agent away from one
+ * (e.g. a key hardcoded in application code rather than an env file).
+ * Matches the common vendor token shapes, not a generic entropy heuristic —
+ * see Notion page 12.
+ */
 const SECRET_PATTERNS: Array<RegExp> = [
   /sk-ant-[A-Za-z0-9_-]{10,}/g,
   /AKIA[0-9A-Z]{16}/g,
@@ -24,8 +28,10 @@ const SECRET_PATTERNS: Array<RegExp> = [
   /-----BEGIN[ A-Z]*PRIVATE KEY-----[\s\S]*?-----END[ A-Z]*PRIVATE KEY-----/g
 ];
 
-// Full file contents (e.g. a Write tool's `content` input, or a Read tool's
-// result) dwarf this length; paths and diff-sized edits stay intact.
+/**
+ * Full file contents (e.g. a Write tool's `content` input, or a Read tool's
+ * result) dwarf this length; paths and diff-sized edits stay intact.
+ */
 const MAX_STRING_LENGTH = 500;
 
 function redactSecrets(value: string): string {
@@ -66,6 +72,6 @@ export function log(event: string, data: Record<string, unknown> = {}) {
   try {
     appendFileSync(LOG_PATH, `${entry}\n`);
   } catch {
-    // failing to write the file must never crash the agent
+    /** Failing to write the file must never crash the agent. */
   }
 }

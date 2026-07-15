@@ -1,16 +1,3 @@
-// Test plan for src/github/run-info.ts — parseSzumrakMeta(prBody), appendRunInfo(prBody, previousMeta, round, result)
-// 1. parseSzumrakMeta returns undefined when the body has no szumrak-meta comment.
-// 2. parseSzumrakMeta returns undefined (not throw) when the comment's JSON is malformed.
-// 3. parseSzumrakMeta returns undefined when the parsed JSON has no "rounds" array (old-shape comment).
-// 4. parseSzumrakMeta returns the parsed meta (totalCostUsd, rounds) when valid.
-// 5. appendRunInfo on a body with no prior meta appends a visible run-info table (round 0,
-//    formatted cost) plus a trailing szumrak-meta comment with a single-entry rounds array.
-// 6. appendRunInfo given previousMeta appends the new round to the existing rounds and sums
-//    totalCostUsd across all rounds.
-// 7. appendRunInfo replaces (not duplicates) an existing visible table + comment already
-//    present in the body, so re-running it never leaves more than one of each.
-// 8. Missing costUsd/numTurns render as "n/a" in the table instead of "undefined".
-
 import { appendRunInfo, parseSzumrakMeta } from "~/github/run-info";
 
 vi.mock("~/platform/logger", () => ({
@@ -77,7 +64,7 @@ describe("appendRunInfo", () => {
     expect(bodyAfterRound1).toContain("| 1 | $0.23 | 3 |");
     expect(bodyAfterRound1).toContain("**Total cost:** $0.64");
 
-    // Only one table and one comment survive, not one per round.
+    /** Only one table and one comment survive, not one per round. */
     expect(bodyAfterRound1.match(/\*\*Szumrak run info\*\*/g)).toHaveLength(1);
     expect(bodyAfterRound1.match(/<!-- szumrak-meta:/g)).toHaveLength(1);
   });

@@ -132,6 +132,11 @@ const TRANSITIONS = { DRAFT: "ACTIVE" };
 newStatus: "ACTIVE" | "COMPLETED"
 ```
 
+## Comments
+
+When a comment is warranted, always use JSDoc format (`/** ... */`), even for a single-line comment above a function, type, or non-obvious statement. Never use plain `//` comments for documentation purposes.
+This does not change *when* to comment — default to no comments; only write one when the WHY is non-obvious (a hidden constraint, a subtle invariant, a workaround). It only changes the *format* once a comment is warranted.
+
 ## List keys in `map`
 
 Never use the array index as the `key` of components rendered inside `map`. Always use a stable, unique value derived from the data (e.g. an `id`).

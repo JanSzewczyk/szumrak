@@ -5,17 +5,20 @@ import { log } from "./platform/logger";
 import { writeStepSummary } from "./platform/summary";
 import { Mode } from "./types/mode";
 
+/** Entrypoint — reads validated env, logs the run, and dispatches to a flow by `MODE`. */
 async function main() {
-  // First thing logged, before any guard can exit — records how this run was
-  // invoked (mode + the non-secret parameters that shape it) even if it goes
-  // on to fail a guard below. Never logs TASK/REVIEW_FEEDBACK content or any
-  // credential; log() would redact/truncate them anyway (platform/logger.ts),
-  // but keeping secrets out of the call entirely is the safer default.
-  // env.TASK/PR_NUMBER/REVIEW_FEEDBACK only exist on one branch of env's
-  // MODE-discriminated type each (see platform/env.ts) — `in` narrows per
-  // branch, and also reflects runtime truth: Zod strips keys the matched
-  // branch doesn't declare, so e.g. "TASK" in env is false, not just
-  // unnarrowed, on the review-followup branch.
+  /**
+   * First thing logged, before any guard can exit — records how this run was
+   * invoked (mode + the non-secret parameters that shape it) even if it goes
+   * on to fail a guard below. Never logs TASK/REVIEW_FEEDBACK content or any
+   * credential; log() would redact/truncate them anyway (platform/logger.ts),
+   * but keeping secrets out of the call entirely is the safer default.
+   * env.TASK/PR_NUMBER/REVIEW_FEEDBACK only exist on one branch of env's
+   * MODE-discriminated type each (see platform/env.ts) — `in` narrows per
+   * branch, and also reflects runtime truth: Zod strips keys the matched
+   * branch doesn't declare, so e.g. "TASK" in env is false, not just
+   * unnarrowed, on the review-followup branch.
+   */
   log("run_started", {
     mode: env.MODE,
     dryRun: env.DRY_RUN,
@@ -31,10 +34,13 @@ async function main() {
   });
 
   try {
-    // No manual guards here for TASK/PR_NUMBER/REVIEW_FEEDBACK (MODE-dependent)
-    // or REPO/GH_APP_* (DRY_RUN-dependent) — platform/env.ts's schema already
-    // guarantees all of them; a run missing any of them never gets past the
-    // `env` import in the first place.
+    /**
+     * No manual guards here for TASK/PR_NUMBER/REVIEW_FEEDBACK
+     * (MODE-dependent) or REPO/GH_APP_* (DRY_RUN-dependent) —
+     * platform/env.ts's schema already guarantees all of them; a run
+     * missing any of them never gets past the `env` import in the first
+     * place.
+     */
     if (env.MODE === Mode.REVIEW_FOLLOWUP) {
       const { owner, repo } = parseRepo(env.REPO);
       const result = await flowRegistry[Mode.REVIEW_FOLLOWUP]({

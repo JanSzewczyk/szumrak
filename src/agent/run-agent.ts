@@ -29,12 +29,14 @@ interface AgentPermissions {
   deny?: Array<string>;
 }
 
-// Target repos opt into an agent-specific tool whitelist/denylist by committing
-// `.claude/agent-permissions.json`. Deliberately separate from the repo's own
-// `.claude/settings.json`, which governs interactive Claude Code sessions (hooks,
-// personal permissions) and isn't meant to double as the unattended agent's
-// sandbox — see Notion page 17, Faza 2/6. A missing file means "no extra
-// restriction beyond permissionMode", not a hard failure.
+/**
+ * Target repos opt into an agent-specific tool whitelist/denylist by
+ * committing `.claude/agent-permissions.json`. Deliberately separate from the
+ * repo's own `.claude/settings.json`, which governs interactive Claude Code
+ * sessions (hooks, personal permissions) and isn't meant to double as the
+ * unattended agent's sandbox — see Notion page 17, Faza 2/6. A missing file
+ * means "no extra restriction beyond permissionMode", not a hard failure.
+ */
 function loadAgentPermissions(workspacePath: string): AgentPermissions {
   const permissionsPath = join(workspacePath, ".claude", "agent-permissions.json");
   if (!existsSync(permissionsPath)) {
@@ -48,8 +50,11 @@ function loadAgentPermissions(workspacePath: string): AgentPermissions {
   }
 }
 
-// Read manually because `settingSources` below excludes 'project', which is
-// what normally makes the SDK discover CLAUDE.md. See runAgent() for why.
+/**
+ * Read manually because `settingSources` below excludes 'project', which is
+ * what normally makes the SDK discover CLAUDE.md. See {@link runAgent} for
+ * why.
+ */
 function loadClaudeMd(workspacePath: string): string | undefined {
   const claudeMdPath = join(workspacePath, "CLAUDE.md");
   if (!existsSync(claudeMdPath)) {
@@ -63,10 +68,12 @@ function loadClaudeMd(workspacePath: string): string | undefined {
   }
 }
 
-// The agent edits files through the SDK's built-in tools (Read/Edit/Grep/Glob).
-// Commit/push/PR happens separately in github/ after the run finishes — the
-// agent never runs `git push`/`gh pr create` itself, so permissionMode
-// "acceptEdits" (auto-accept file edits) is enough without opening up Bash.
+/**
+ * The agent edits files through the SDK's built-in tools (Read/Edit/Grep/Glob).
+ * Commit/push/PR happens separately in github/ after the run finishes — the
+ * agent never runs `git push`/`gh pr create` itself, so permissionMode
+ * "acceptEdits" (auto-accept file edits) is enough without opening up Bash.
+ */
 export async function runAgent(task: string): Promise<AgentRunResult> {
   const toolCalls: Array<AgentToolCall> = [];
   let finalMessage = "";
@@ -96,28 +103,33 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
       model: env.AGENT_MODEL,
       allowedTools: permissions.allow,
       disallowedTools: permissions.deny,
-      // Never load the target repo's .claude/settings.json or
-      // settings.local.json (the SDK default is to load everything it finds).
-      // Those files are written for interactive Claude Code sessions — hooks
-      // in particular tend to assume an interactive shell and can hard-loop
-      // or crash an unattended run (e.g. a PreToolUse hook using bash-only
-      // `[[ ]]` syntax fails under this image's /bin/sh and blocks every tool
-      // call). Tool restrictions for the agent come only from
-      // agent-permissions.json above. CLAUDE.md is loaded manually via
-      // systemPrompt.append instead, since 'project' is what would normally
-      // pull it in alongside the hooks we're excluding.
+      /**
+       * Never load the target repo's .claude/settings.json or
+       * settings.local.json (the SDK default is to load everything it
+       * finds). Those files are written for interactive Claude Code
+       * sessions — hooks in particular tend to assume an interactive shell
+       * and can hard-loop or crash an unattended run (e.g. a PreToolUse
+       * hook using bash-only `[[ ]]` syntax fails under this image's
+       * /bin/sh and blocks every tool call). Tool restrictions for the
+       * agent come only from agent-permissions.json above. CLAUDE.md is
+       * loaded manually via systemPrompt.append instead, since 'project' is
+       * what would normally pull it in alongside the hooks we're excluding.
+       */
       settingSources: [],
       systemPrompt: {
         type: "preset",
         preset: "claude_code",
         append: claudeMd ? `${claudeMd}\n\n${COMMIT_METADATA_INSTRUCTIONS}` : COMMIT_METADATA_INSTRUCTIONS,
-        // Strips per-run dynamic sections (cwd, git status, auto-memory path)
-        // out of the system prompt and re-injects them as the first user
-        // message instead, so the static prefix (CLAUDE.md + commit-metadata
-        // instructions) is byte-identical across independent runs and can hit
-        // Anthropic's prompt cache cross-session — not just across turns
-        // within one run, which already share a stable prefix regardless.
-        // Free to enable: on a cache miss this behaves exactly as before.
+        /**
+         * Strips per-run dynamic sections (cwd, git status, auto-memory
+         * path) out of the system prompt and re-injects them as the first
+         * user message instead, so the static prefix (CLAUDE.md +
+         * commit-metadata instructions) is byte-identical across
+         * independent runs and can hit Anthropic's prompt cache
+         * cross-session — not just across turns within one run, which
+         * already share a stable prefix regardless. Free to enable: on a
+         * cache miss this behaves exactly as before.
+         */
         excludeDynamicSections: true
       }
     }
@@ -178,8 +190,10 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
   }
 
   const commitMetadata = parseCommitMetadata(finalMessage);
-  // Strip the machine-readable block from the human-facing summary (DRY_RUN
-  // console output, PR body) now that it's been parsed out.
+  /**
+   * Strip the machine-readable block from the human-facing summary (DRY_RUN
+   * console output, PR body) now that it's been parsed out.
+   */
   const displayMessage = finalMessage.replace(COMMIT_BLOCK_PATTERN, "").trim();
 
   log("agent_end", { toolCallCount: toolCalls.length, succeeded, finalMessage: displayMessage, commitMetadata });

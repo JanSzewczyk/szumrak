@@ -1,5 +1,7 @@
-// Shared by pull-requests.ts, the dedup check, and the review-followup flow —
-// all need owner/repo split out of REPO ("owner/repo").
+/**
+ * Shared by pull-requests.ts, the dedup check, and the review-followup flow —
+ * all need owner/repo split out of REPO ("owner/repo").
+ */
 export function parseRepo(repo: string | undefined): { owner: string; repo: string } {
   const [owner, name] = (repo ?? "").split("/");
   if (!owner || !name) {
