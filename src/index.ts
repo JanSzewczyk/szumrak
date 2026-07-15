@@ -33,20 +33,17 @@ async function main() {
     process.exit(1);
   }
 
-  // TASK is only required for a fresh (MODE=runner) run; review-followup gets
-  // its task from the PR body instead, via PR_NUMBER + REVIEW_FEEDBACK.
-  if (env.MODE === Mode.REVIEW_FOLLOWUP) {
-    if (!env.PR_NUMBER || !env.REVIEW_FEEDBACK) {
-      console.error("PR_NUMBER and REVIEW_FEEDBACK are required when MODE=review-followup.");
-      process.exit(1);
-    }
-  } else if (!env.TASK) {
-    console.error("TASK is required when MODE=runner.");
-    process.exit(1);
-  }
-
   try {
+    // Each mode validates only the env it needs, right next to where it
+    // dispatches — review-followup gets its task from the PR body instead of
+    // TASK, so it never needs TASK required, and vice versa for PR_NUMBER/
+    // REVIEW_FEEDBACK.
     if (env.MODE === Mode.REVIEW_FOLLOWUP) {
+      if (!env.PR_NUMBER || !env.REVIEW_FEEDBACK) {
+        console.error("PR_NUMBER and REVIEW_FEEDBACK are required when MODE=review-followup.");
+        process.exit(1);
+      }
+
       const { owner, repo } = parseRepo(env.REPO);
       const result = await flowRegistry[Mode.REVIEW_FOLLOWUP]({
         owner,
@@ -60,9 +57,16 @@ async function main() {
       return;
     }
 
-    const result = await flowRegistry[Mode.RUNNER]({ task: env.TASK });
-    if (!result.succeeded) {
-      process.exit(1);
+    if (env.MODE === Mode.RUNNER) {
+      if (!env.TASK) {
+        console.error("TASK is required when MODE=runner.");
+        process.exit(1);
+      }
+
+      const result = await flowRegistry[Mode.RUNNER]({ task: env.TASK });
+      if (!result.succeeded) {
+        process.exit(1);
+      }
     }
   } catch (err) {
     log("fatal_error", { error: String(err) });
