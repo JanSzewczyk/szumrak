@@ -39,6 +39,18 @@ const ReviewFollowUpModeEnv = z.object({
 });
 
 /**
+ * z.discriminatedUnion requires an exact literal match on MODE — it can't
+ * fall back to a `.default()` declared on a schema field the way a flat
+ * z.enum(...).default(...) could, so the default is applied here, directly
+ * on process.env, before createEnv (below) ever reads it. Must run before
+ * the createEnv call; `!process.env.MODE` also covers the empty-string case
+ * emptyStringAsUndefined normally handles, since it runs before that step.
+ */
+if (!process.env.MODE) {
+  process.env.MODE = Mode.RUNNER;
+}
+
+/**
  * The single source of validated configuration — read through this exported
  * `env` object everywhere, never `process.env.X` directly. See the inline
  * comments below for the reasoning behind each option.
