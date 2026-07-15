@@ -73,7 +73,6 @@ export const env = createEnv({
       .describe("Natural-language task for the agent to perform; required when MODE=runner"),
     MODE: z
       .enum([Mode.RUNNER, Mode.REVIEW_FOLLOWUP])
-      .default(Mode.RUNNER)
       .describe(
         "runner: run TASK and open a new PR. review-followup: address review feedback on PR_NUMBER's existing branch instead."
       ),

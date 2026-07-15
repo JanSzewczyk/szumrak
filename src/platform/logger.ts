@@ -13,7 +13,7 @@ const LOG_PATH = env.AGENT_LOG_PATH ?? join(env.WORKSPACE_PATH, "agent-run.jsonl
 /**
  * agent-run.jsonl is uploaded as a CI artifact (readable by anyone with
  * repo/Actions access), so it must never carry a live credential even if the
- * agent-permissions.json denylist fails to keep the agent away from one
+ * agent-config.json permissions denylist fails to keep the agent away from one
  * (e.g. a key hardcoded in application code rather than an env file).
  * Matches the common vendor token shapes, not a generic entropy heuristic —
  * see Notion page 12.

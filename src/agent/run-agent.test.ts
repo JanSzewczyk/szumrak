@@ -2,9 +2,14 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { runAgent } from "~/agent/run-agent";
+import { runVerifyCommands } from "~/agent/verify";
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: vi.fn()
+}));
+
+vi.mock("~/agent/verify", () => ({
+  runVerifyCommands: vi.fn()
 }));
 
 vi.mock("~/platform/logger", () => ({
@@ -19,6 +24,20 @@ vi.mock("node:fs", () => ({
 const mockedQuery = vi.mocked(query);
 const mockedExistsSync = vi.mocked(existsSync);
 const mockedReadFileSync = vi.mocked(readFileSync);
+const mockedRunVerifyCommands = vi.mocked(runVerifyCommands);
+
+const CONFIG_PATH = join("/workspace", ".claude", "agent-config.json");
+
+/** Puts a single agent-config/permissions file "on disk" for the fs mocks. */
+function configOnDisk(path: string, content: unknown) {
+  mockedExistsSync.mockImplementation((candidate) => candidate === path);
+  mockedReadFileSync.mockImplementation((candidate) => {
+    if (candidate === path) {
+      return typeof content === "string" ? content : JSON.stringify(content);
+    }
+    throw new Error(`unexpected read: ${String(candidate)}`);
+  });
+}
 
 /**
  * Builds a minimal async generator that yields the given messages, mimicking
@@ -174,14 +193,12 @@ describe("runAgent", () => {
     await expect(runAgent("task")).rejects.toThrow("Agent exceeded max duration");
   });
 
-  test("passes allow/deny from .claude/agent-permissions.json as allowedTools/disallowedTools", async () => {
-    mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue(JSON.stringify({ allow: ["Read", "Edit"], deny: ["Bash(rm -rf*)"] }));
+  test("passes permissions.allow/deny from .claude/agent-config.json as allowedTools/disallowedTools", async () => {
+    configOnDisk(CONFIG_PATH, { permissions: { allow: ["Read", "Edit"], deny: ["Bash(rm -rf*)"] } });
     mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
 
     await runAgent("task");
 
-    expect(mockedExistsSync).toHaveBeenCalledWith(join("/workspace", ".claude", "agent-permissions.json"));
     expect(mockedQuery).toHaveBeenCalledWith(
       expect.objectContaining({
         options: expect.objectContaining({
@@ -206,9 +223,8 @@ describe("runAgent", () => {
     );
   });
 
-  test("leaves allowedTools/disallowedTools undefined when the permissions file is invalid JSON", async () => {
-    mockedExistsSync.mockReturnValue(true);
-    mockedReadFileSync.mockReturnValue("not json");
+  test("leaves allowedTools/disallowedTools undefined when the config file is invalid JSON", async () => {
+    configOnDisk(CONFIG_PATH, "not json");
     mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
 
     await runAgent("task");
@@ -218,6 +234,85 @@ describe("runAgent", () => {
         options: expect.not.objectContaining({ allowedTools: expect.anything() })
       })
     );
+  });
+
+  test("passes the skills whitelist from agent-config.json through to the SDK", async () => {
+    configOnDisk(CONFIG_PATH, { skills: "all" });
+    mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+
+    await runAgent("task");
+
+    expect(mockedQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({ skills: "all" })
+      })
+    );
+  });
+
+  test("omits the skills option entirely when the target repo doesn't opt in", async () => {
+    mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+
+    await runAgent("task");
+
+    expect(mockedQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.not.objectContaining({ skills: expect.anything() })
+      })
+    );
+  });
+
+  describe("verify Stop hook", () => {
+    /** Runs the agent with verify commands configured and returns the registered Stop hook. */
+    async function stopHookFor(verify: Array<string>) {
+      configOnDisk(CONFIG_PATH, { verify });
+      mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+      await runAgent("task");
+      const options = mockedQuery.mock.calls[0]?.[0]?.options as {
+        hooks?: { Stop?: Array<{ hooks: Array<() => Promise<Record<string, unknown>>> }> };
+      };
+      return options.hooks?.Stop?.[0]?.hooks[0];
+    }
+
+    test("registers no hooks when the config has no verify commands", async () => {
+      mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+
+      await runAgent("task");
+
+      expect(mockedQuery).toHaveBeenCalledWith(
+        expect.objectContaining({
+          options: expect.not.objectContaining({ hooks: expect.anything() })
+        })
+      );
+    });
+
+    test("lets the agent stop when verification passes", async () => {
+      mockedRunVerifyCommands.mockReturnValue({ passed: true, report: "" });
+      const hook = await stopHookFor(["npm run lint"]);
+
+      await expect(hook?.()).resolves.toEqual({});
+      expect(mockedRunVerifyCommands).toHaveBeenCalledWith(["npm run lint"], "/workspace");
+    });
+
+    test("blocks the stop with the failure report so the agent keeps fixing", async () => {
+      mockedRunVerifyCommands.mockReturnValue({ passed: false, report: "$ npm run lint\nerror X" });
+      const hook = await stopHookFor(["npm run lint"]);
+
+      await expect(hook?.()).resolves.toEqual({
+        decision: "block",
+        reason: expect.stringContaining("$ npm run lint\nerror X")
+      });
+    });
+
+    test("stops blocking after MAX_VERIFY_BLOCKS rounds even if verification still fails", async () => {
+      mockedRunVerifyCommands.mockReturnValue({ passed: false, report: "still broken" });
+      const hook = await stopHookFor(["npm run lint"]);
+
+      await expect(hook?.()).resolves.toMatchObject({ decision: "block" });
+      await expect(hook?.()).resolves.toMatchObject({ decision: "block" });
+      /** Third stop attempt is allowed through — the runner flow's final gate takes over. */
+      await expect(hook?.()).resolves.toEqual({});
+      expect(mockedRunVerifyCommands).toHaveBeenCalledTimes(2);
+    });
   });
 
   test("wires a trailing commit block into result.commitMetadata and strips it from finalMessage", async () => {

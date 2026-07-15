@@ -1,4 +1,6 @@
+import { loadAgentConfig } from "~/agent/agent-config";
 import { runAgent } from "~/agent/run-agent";
+import { runVerifyCommands } from "~/agent/verify";
 import { findOpenPRForTask } from "~/github/dedup";
 import { commitAndOpenPR } from "~/github/pull-requests";
 import { parseRepo } from "~/github/repo";
@@ -45,6 +47,23 @@ export async function runRunnerFlow({ task }: RunnerFlowInput): Promise<FlowResu
     console.error("The agent did not complete the task successfully.");
     writeStepSummary(`Task did not complete successfully: ${result.finalMessage.slice(0, 300)}`);
     return { succeeded: false };
+  }
+
+  /**
+   * Final quality gate: the Stop hook in run-agent.ts already pushed the
+   * agent to fix verify failures in-session (capped at MAX_VERIFY_BLOCKS), so
+   * reaching this point with a failure means the agent couldn't resolve it —
+   * don't ship a PR (or report a dry run as clean) with broken verification.
+   */
+  const { verify } = loadAgentConfig(env.WORKSPACE_PATH);
+  if (verify && verify.length > 0) {
+    const outcome = runVerifyCommands(verify, env.WORKSPACE_PATH);
+    if (!outcome.passed) {
+      log("verify_gate_failed", { report: outcome.report });
+      console.error(`Verification failed after the agent run:\n${outcome.report}`);
+      writeStepSummary(`Verification failed after the agent run:\n\n\`\`\`\n${outcome.report.slice(0, 1500)}\n\`\`\``);
+      return { succeeded: false };
+    }
   }
 
   if (env.DRY_RUN) {

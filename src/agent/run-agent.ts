@@ -1,14 +1,16 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { type HookCallbackMatcher, query } from "@anthropic-ai/claude-agent-sdk";
 import { env } from "~/platform/env";
 import { log } from "~/platform/logger";
+import { loadAgentConfig } from "./agent-config";
 import {
   COMMIT_BLOCK_PATTERN,
   COMMIT_METADATA_INSTRUCTIONS,
   type CommitMetadata,
   parseCommitMetadata
 } from "./commit-metadata";
+import { runVerifyCommands } from "./verify";
 
 export interface AgentToolCall {
   name: string;
@@ -24,30 +26,50 @@ export interface AgentRunResult {
   numTurns?: number;
 }
 
-interface AgentPermissions {
-  allow?: Array<string>;
-  deny?: Array<string>;
-}
+/**
+ * How many times the Stop hook may push the agent back to work over failing
+ * verify commands within a single run. Past the cap the session is allowed to
+ * end (the runner flow's final gate still catches the unresolved failure) —
+ * without a cap a failure the agent can't fix would burn turns until
+ * MAX_TURNS/MAX_DURATION_MS.
+ */
+const MAX_VERIFY_BLOCKS = 2;
 
 /**
- * Target repos opt into an agent-specific tool whitelist/denylist by
- * committing `.claude/agent-permissions.json`. Deliberately separate from the
- * repo's own `.claude/settings.json`, which governs interactive Claude Code
- * sessions (hooks, personal permissions) and isn't meant to double as the
- * unattended agent's sandbox — see Notion page 17, Faza 2/6. A missing file
- * means "no extra restriction beyond permissionMode", not a hard failure.
+ * Builds the programmatic Stop hook that runs the target repo's `verify`
+ * commands whenever the agent tries to finish, feeding failures back so it
+ * fixes them autonomously in the same session. In-process callbacks on
+ * purpose: they carry none of the interactive-shell assumptions that make the
+ * target repo's own settings.json hooks unsafe to run unattended (which is
+ * why `settingSources: []` below excludes them).
  */
-function loadAgentPermissions(workspacePath: string): AgentPermissions {
-  const permissionsPath = join(workspacePath, ".claude", "agent-permissions.json");
-  if (!existsSync(permissionsPath)) {
-    return {};
-  }
-  try {
-    return JSON.parse(readFileSync(permissionsPath, "utf-8")) as AgentPermissions;
-  } catch (err) {
-    log("agent_permissions_invalid", { permissionsPath, error: String(err) });
-    return {};
-  }
+function buildVerifyStopHook(verifyCommands: Array<string>): Partial<Record<"Stop", Array<HookCallbackMatcher>>> {
+  let blocks = 0;
+  return {
+    Stop: [
+      {
+        hooks: [
+          async function verifyOnStop() {
+            if (blocks >= MAX_VERIFY_BLOCKS) {
+              log("verify_cap_reached", { blocks });
+              return {};
+            }
+            const outcome = runVerifyCommands(verifyCommands, env.WORKSPACE_PATH);
+            if (outcome.passed) {
+              log("verify_passed", { commands: verifyCommands });
+              return {};
+            }
+            blocks += 1;
+            log("verify_failed", { round: blocks, report: outcome.report });
+            return {
+              decision: "block" as const,
+              reason: `The repository's verification commands failed after your changes. Fix the reported problems before finishing:\n\n${outcome.report}`
+            };
+          }
+        ]
+      }
+    ]
+  };
 }
 
 /**
@@ -91,8 +113,9 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
     nodeVersion: process.version
   });
 
-  const permissions = loadAgentPermissions(env.WORKSPACE_PATH);
+  const config = loadAgentConfig(env.WORKSPACE_PATH);
   const claudeMd = loadClaudeMd(env.WORKSPACE_PATH);
+  const verifyCommands = config.verify ?? [];
 
   const stream = query({
     prompt: task,
@@ -101,8 +124,17 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
       permissionMode: "acceptEdits",
       maxTurns: env.MAX_TURNS,
       model: env.AGENT_MODEL,
-      allowedTools: permissions.allow,
-      disallowedTools: permissions.deny,
+      allowedTools: config.permissions?.allow,
+      disallowedTools: config.permissions?.deny,
+      /**
+       * Skills whitelisted by the target repo's agent-config.json (`"all"` or
+       * a name list). Discovery happens in the target repo's own
+       * `.claude/skills/`; the model then invokes them autonomously based on
+       * each SKILL.md's name/description. Omitted entirely when the target
+       * repo doesn't opt in.
+       */
+      ...(config.skills !== undefined ? { skills: config.skills } : {}),
+      ...(verifyCommands.length > 0 ? { hooks: buildVerifyStopHook(verifyCommands) } : {}),
       /**
        * Never load the target repo's .claude/settings.json or
        * settings.local.json (the SDK default is to load everything it
@@ -111,7 +143,7 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
        * and can hard-loop or crash an unattended run (e.g. a PreToolUse
        * hook using bash-only `[[ ]]` syntax fails under this image's
        * /bin/sh and blocks every tool call). Tool restrictions for the
-       * agent come only from agent-permissions.json above. CLAUDE.md is
+       * agent come only from agent-config.json above. CLAUDE.md is
        * loaded manually via systemPrompt.append instead, since 'project' is
        * what would normally pull it in alongside the hooks we're excluding.
        */

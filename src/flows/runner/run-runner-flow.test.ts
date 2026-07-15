@@ -1,5 +1,7 @@
+import { loadAgentConfig } from "~/agent/agent-config";
 import type { CommitMetadata } from "~/agent/commit-metadata";
 import { runAgent } from "~/agent/run-agent";
+import { runVerifyCommands } from "~/agent/verify";
 import { runRunnerFlow } from "~/flows/runner/run-runner-flow";
 import { findOpenPRForTask } from "~/github/dedup";
 import { commitAndOpenPR } from "~/github/pull-requests";
@@ -8,6 +10,14 @@ import { commitMetadataBuilder } from "~/test/builders/commit-metadata.builder";
 
 vi.mock("~/agent/run-agent", () => ({
   runAgent: vi.fn()
+}));
+
+vi.mock("~/agent/agent-config", () => ({
+  loadAgentConfig: vi.fn()
+}));
+
+vi.mock("~/agent/verify", () => ({
+  runVerifyCommands: vi.fn()
 }));
 
 vi.mock("~/github/dedup", () => ({
@@ -29,6 +39,8 @@ vi.mock("~/platform/summary", () => ({
 const mockedRunAgent = vi.mocked(runAgent);
 const mockedFindOpenPRForTask = vi.mocked(findOpenPRForTask);
 const mockedCommitAndOpenPR = vi.mocked(commitAndOpenPR);
+const mockedLoadAgentConfig = vi.mocked(loadAgentConfig);
+const mockedRunVerifyCommands = vi.mocked(runVerifyCommands);
 
 describe("runRunnerFlow", () => {
   let defaultCommitMetadata: CommitMetadata;
@@ -47,6 +59,7 @@ describe("runRunnerFlow", () => {
       })
     );
     mockedCommitAndOpenPR.mockResolvedValue("https://github.com/acme/widgets/pull/1");
+    mockedLoadAgentConfig.mockReturnValue({});
   });
 
   test("skips the agent and reports success when an open PR already exists for the task", async () => {
@@ -99,6 +112,43 @@ describe("runRunnerFlow", () => {
       expect.stringContaining(`Task:\n${longTask}`),
       defaultCommitMetadata
     );
+  });
+
+  test("fails without opening a PR when the final verify gate fails", async () => {
+    mockedLoadAgentConfig.mockReturnValue({ verify: ["npm run typecheck"] });
+    mockedRunVerifyCommands.mockReturnValue({ passed: false, report: "$ npm run typecheck\nerror TS2322" });
+
+    const result = await runRunnerFlow({ task: "Add a feature" });
+
+    expect(result).toEqual({ succeeded: false });
+    expect(mockedCommitAndOpenPR).not.toHaveBeenCalled();
+    expect(mockedRunVerifyCommands).toHaveBeenCalledWith(["npm run typecheck"], expect.any(String));
+  });
+
+  test("opens a PR when the final verify gate passes", async () => {
+    mockedLoadAgentConfig.mockReturnValue({ verify: ["npm run typecheck"] });
+    mockedRunVerifyCommands.mockReturnValue({ passed: true, report: "" });
+
+    const result = await runRunnerFlow({ task: "Add a feature" });
+
+    expect(result).toEqual({ succeeded: true });
+    expect(mockedCommitAndOpenPR).toHaveBeenCalled();
+  });
+
+  test("skips the verify gate entirely when the target repo configures no verify commands", async () => {
+    await runRunnerFlow({ task: "Add a feature" });
+
+    expect(mockedRunVerifyCommands).not.toHaveBeenCalled();
+  });
+
+  test("the verify gate also fails a DRY_RUN so broken changes aren't reported as clean", async () => {
+    process.env.DRY_RUN = "true";
+    mockedLoadAgentConfig.mockReturnValue({ verify: ["npm run lint"] });
+    mockedRunVerifyCommands.mockReturnValue({ passed: false, report: "lint error" });
+
+    const result = await runRunnerFlow({ task: "Add a feature" });
+
+    expect(result).toEqual({ succeeded: false });
   });
 
   test("reports success even when there were no changes to commit", async () => {
