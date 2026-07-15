@@ -1,6 +1,6 @@
 import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
-import { env } from "~/env";
+import { env } from "~/platform/env";
 
 const appAuthOptions = {
   appId: env.GH_APP_ID as string,

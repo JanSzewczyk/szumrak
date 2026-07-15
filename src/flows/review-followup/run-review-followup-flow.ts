@@ -1,30 +1,23 @@
-import { env } from "./env";
-import { changedFilesWithContent, checkoutExistingBranch, pushFollowUpCommit } from "./git";
-import { octokit } from "./lib/github";
-import { log } from "./lib/logger";
-import { appendRunInfo, parseSzumrakMeta, type SzumrakMeta } from "./lib/run-info";
-import { writeStepSummary } from "./lib/summary";
-import { type AgentRunResult, runAgent } from "./run-agent";
-
-// Hard cap on automatic review rounds per PR (Notion page 9) — without it, an
-// endless review -> fix -> new objections -> fix loop is possible. Tracked as
-// a `review-round-N` label on the PR itself, since the container is ephemeral
-// and has nowhere else convenient to persist state between runs.
-const MAX_REVIEW_ROUNDS = 3;
-const ROUND_LABEL_PATTERN = /^review-round-(\d+)$/;
-
-// Mirrors the PR body format written by index.ts: "Task:\n<TASK>\n\nGenerated
-// automatically by Szumrak.\n\n...". This is the only record of the original
-// task once the initial run's process has exited.
-const ORIGINAL_TASK_PATTERN = /^Task:\n([\s\S]*?)\n\nGenerated automatically by Szumrak\./;
-
-function extractOriginalTask(prBody: string): string {
-  return prBody.match(ORIGINAL_TASK_PATTERN)?.[1] ?? "(original task unavailable — see PR description)";
-}
+import type { AgentRunResult } from "~/agent/run-agent";
+import { runAgent } from "~/agent/run-agent";
+import { octokit } from "~/github/client";
+import { changedFilesWithContent, checkoutExistingBranch, pushFollowUpCommit } from "~/github/git-operations";
+import { appendRunInfo, parseSzumrakMeta, type SzumrakMeta } from "~/github/run-info";
+import { env } from "~/platform/env";
+import { log } from "~/platform/logger";
+import { writeStepSummary } from "~/platform/summary";
+import type { FlowResult } from "../types";
+import {
+  buildFollowUpTask,
+  extractOriginalTask,
+  getRoundCount,
+  MAX_REVIEW_ROUNDS,
+  updateRoundLabel
+} from "./review-rounds";
 
 // Best-effort — losing this metadata only means the cost/round table in the PR
 // body won't show this round, not that the round itself fails. Mirrors the
-// label removal's own .catch(() => {}) below.
+// label removal's own .catch(() => {}) in review-rounds.ts.
 async function updateSzumrakMeta(
   owner: string,
   repo: string,
@@ -43,55 +36,15 @@ async function updateSzumrakMeta(
   });
 }
 
-function getRoundCount(labels: Array<{ name?: string }>): number {
-  for (const label of labels) {
-    const match = label.name?.match(ROUND_LABEL_PATTERN);
-    if (match) {
-      return Number(match[1]);
-    }
-  }
-  return 0;
-}
-
-function buildFollowUpTask(branch: string, originalTask: string, filesContent: string, feedback: string): string {
-  return `You are continuing earlier work on branch ${branch}. Do not start over — modify the existing changes to address the feedback below.
-
-Original task:
-${originalTask}
-
-Current full content of the files you changed (do not re-read these unless a file is marked truncated):
-${filesContent}
-
-Code review feedback you must address:
-${feedback}`;
-}
-
-async function updateRoundLabel(owner: string, repo: string, prNumber: number, previousRound: number): Promise<void> {
-  if (previousRound > 0) {
-    await octokit.issues
-      .removeLabel({ owner, repo, issue_number: prNumber, name: `review-round-${previousRound}` })
-      .catch(() => {
-        // the label may already be gone; round tracking is best-effort, not load-bearing
-      });
-  }
-  await octokit.issues.addLabels({
-    owner,
-    repo,
-    issue_number: prNumber,
-    labels: [`review-round-${previousRound + 1}`]
-  });
-}
-
-export interface ReviewFollowUpResult {
-  succeeded: boolean;
-}
-
+// The review-followup flow: given feedback on an existing PR, continue the
+// agent's work on that PR's branch instead of starting over. This is the flow
+// behind MODE=review-followup (env.MODE === Mode.REVIEW_FOLLOWUP).
 export async function runReviewFollowUp(
   owner: string,
   repo: string,
   prNumber: number,
   feedback: string
-): Promise<ReviewFollowUpResult> {
+): Promise<FlowResult> {
   const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number: prNumber });
   const round = getRoundCount(pr.labels);
 

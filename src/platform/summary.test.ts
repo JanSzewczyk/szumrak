@@ -1,4 +1,4 @@
-// Test plan for src/lib/summary.ts — writeStepSummary(message, icon?)
+// Test plan for src/platform/summary.ts — writeStepSummary(message, icon?)
 // 1. When GITHUB_STEP_SUMMARY is set, appends a "❌ **Szumrak** — <message>" line
 //    (plus newline) to that path.
 // 2. When GITHUB_STEP_SUMMARY is unset, does nothing (no appendFileSync call).
@@ -21,7 +21,7 @@ describe("writeStepSummary", () => {
 
   test("appends a markdown failure line to GITHUB_STEP_SUMMARY when set", async () => {
     process.env.GITHUB_STEP_SUMMARY = "/tmp/step-summary.md";
-    const { writeStepSummary } = await import("~/lib/summary");
+    const { writeStepSummary } = await import("~/platform/summary");
 
     writeStepSummary("Task did not complete successfully");
 
@@ -32,7 +32,7 @@ describe("writeStepSummary", () => {
   });
 
   test("does nothing when GITHUB_STEP_SUMMARY is unset", async () => {
-    const { writeStepSummary } = await import("~/lib/summary");
+    const { writeStepSummary } = await import("~/platform/summary");
 
     writeStepSummary("Task did not complete successfully");
 
@@ -44,14 +44,14 @@ describe("writeStepSummary", () => {
     mockedAppendFileSync.mockImplementationOnce(() => {
       throw new Error("EACCES: permission denied");
     });
-    const { writeStepSummary } = await import("~/lib/summary");
+    const { writeStepSummary } = await import("~/platform/summary");
 
     expect(() => writeStepSummary("boom")).not.toThrow();
   });
 
   test("uses a custom icon when provided", async () => {
     process.env.GITHUB_STEP_SUMMARY = "/tmp/step-summary.md";
-    const { writeStepSummary } = await import("~/lib/summary");
+    const { writeStepSummary } = await import("~/platform/summary");
 
     writeStepSummary("Skipped — an open PR already exists", "ℹ️");
 

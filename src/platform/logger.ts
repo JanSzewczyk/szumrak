@@ -1,6 +1,6 @@
 import { appendFileSync } from "node:fs";
 import { join } from "node:path";
-import { env } from "~/env";
+import { env } from "~/platform/env";
 
 // Derived from WORKSPACE_PATH by default (not hardcoded to "/workspace"):
 // otherwise, in Level 1 testing (no Docker, WORKSPACE_PATH pointing at a local
