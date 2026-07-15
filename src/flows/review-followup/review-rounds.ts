@@ -1,9 +1,11 @@
 import { octokit } from "~/github/client";
 
-// Hard cap on automatic review rounds per PR (Notion page 9) — without it, an
-// endless review -> fix -> new objections -> fix loop is possible. Tracked as
-// a `review-round-N` label on the PR itself, since the container is ephemeral
-// and has nowhere else convenient to persist state between runs.
+/**
+ * Hard cap on automatic review rounds per PR (Notion page 9) — without it, an
+ * endless review -> fix -> new objections -> fix loop is possible. Tracked as
+ * a `review-round-N` label on the PR itself, since the container is ephemeral
+ * and has nowhere else convenient to persist state between runs.
+ */
 export const MAX_REVIEW_ROUNDS = 3;
 const ROUND_LABEL_PATTERN = /^review-round-(\d+)$/;
 
@@ -27,7 +29,7 @@ export async function updateRoundLabel(
     await octokit.issues
       .removeLabel({ owner, repo, issue_number: prNumber, name: `review-round-${previousRound}` })
       .catch(() => {
-        // the label may already be gone; round tracking is best-effort, not load-bearing
+        /** The label may already be gone; round tracking is best-effort, not load-bearing. */
       });
   }
   await octokit.issues.addLabels({
@@ -38,11 +40,14 @@ export async function updateRoundLabel(
   });
 }
 
-// Mirrors the PR body format written by flows/runner/run-runner-flow.ts:
-// "Task:\n<TASK>\n\nGenerated automatically by Szumrak.\n\n...". This is the
-// only record of the original task once the initial run's process has exited.
 const ORIGINAL_TASK_PATTERN = /^Task:\n([\s\S]*?)\n\nGenerated automatically by Szumrak\./;
 
+/**
+ * Mirrors the PR body format written by flows/runner/run-runner-flow.ts:
+ * "Task:\n<TASK>\n\nGenerated automatically by Szumrak.\n\n...". This is the
+ * only record of the original task once the initial run's process has
+ * exited.
+ */
 export function extractOriginalTask(prBody: string): string {
   return prBody.match(ORIGINAL_TASK_PATTERN)?.[1] ?? "(original task unavailable — see PR description)";
 }

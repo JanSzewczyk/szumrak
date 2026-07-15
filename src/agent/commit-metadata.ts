@@ -22,13 +22,15 @@ export interface CommitMetadata {
   branchSlug: string;
 }
 
-// Appended to the system prompt so the agent — the one that actually knows
-// what it changed and why — produces the commit metadata itself, instead of
-// git-operations.ts guessing a commit type from the raw task text (which used
-// to always commit as "chore(agent): ...", regardless of the real change;
-// craft-flow's semantic-release parses commit type for versioning, so a wrong
-// type is a real bug, not just cosmetic). Runs in the same turn as the edits,
-// so it costs no extra API call.
+/**
+ * Appended to the system prompt so the agent — the one that actually knows
+ * what it changed and why — produces the commit metadata itself, instead of
+ * git-operations.ts guessing a commit type from the raw task text (which used
+ * to always commit as "chore(agent): ...", regardless of the real change;
+ * craft-flow's semantic-release parses commit type for versioning, so a wrong
+ * type is a real bug, not just cosmetic). Runs in the same turn as the edits,
+ * so it costs no extra API call.
+ */
 export const COMMIT_METADATA_INSTRUCTIONS = `
 When you have finished making all edits for this task, end your final response with exactly one fenced block using these four field names literally, each on its own line. Keep "type" and "subject" as separate lines — do not collapse them into one "type: subject" line the way a real commit message reads.
 
@@ -67,13 +69,15 @@ export function parseCommitMetadata(finalMessage: string): CommitMetadata | unde
     }
   }
 
-  // Tolerate the model collapsing "type: <type>" and "subject: <subject>"
-  // into a single conventional-commit-style line (e.g. a bare
-  // "test: add unit tests..." line instead of separate "type:"/"subject:"
-  // lines) — an easy mistake since that's what the final commit message is
-  // supposed to look like. Neither "type" nor "subject" matches the strict
-  // field regex above in that case, so scan every line for one that starts
-  // with a valid conventional commit type.
+  /**
+   * Tolerate the model collapsing "type: <type>" and "subject: <subject>"
+   * into a single conventional-commit-style line (e.g. a bare
+   * "test: add unit tests..." line instead of separate "type:"/"subject:"
+   * lines) — an easy mistake since that's what the final commit message is
+   * supposed to look like. Neither "type" nor "subject" matches the strict
+   * field regex above in that case, so scan every line for one that starts
+   * with a valid conventional commit type.
+   */
   if (!fields.type || !CONVENTIONAL_COMMIT_TYPES.includes(fields.type as ConventionalCommitType)) {
     for (const line of match[1].split("\n")) {
       const collapsed = line.match(/^(\w+):\s*(.+)$/);

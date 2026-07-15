@@ -1,24 +1,3 @@
-// Test plan for src/github/git-operations.ts
-// checkoutExistingBranch(owner, repo, branch):
-// 1. Authenticates the remote with an embedded token, then fetches, checks out, and
-//    pulls the given branch, in that order.
-//
-// changedFilesWithContent(baseBranch?):
-// 2. Lists the name-only diff against the default base branch (origin/main).
-// 3. Returns each changed file's current content under a "### <path>" header.
-// 4. Annotates a file over the per-file cap as truncated instead of inlining it.
-// 5. Marks a deleted file (no HEAD blob) instead of throwing.
-// 6. Returns a placeholder when nothing changed against the base branch.
-// 7. Accepts a custom base branch.
-//
-// pushFollowUpCommit(taskSummary, commitMetadata?):
-// 8. Returns false and does not add/commit/push when there are no changes.
-// 9. Commits and pushes to HEAD (not a new branch) when there are changes.
-// 10. Falls back to the chore(agent) commit message without commitMetadata.
-//
-// execFileSync is invoked with an argument array (never a single interpolated string)
-// for every git subcommand — the command-injection guard git() exists to enforce.
-
 import { execFileSync } from "node:child_process";
 import { changedFilesWithContent, checkoutExistingBranch, pushFollowUpCommit } from "~/github/git-operations";
 import { commitMetadataBuilder } from "~/test/builders/commit-metadata.builder";
@@ -74,8 +53,10 @@ describe("changedFilesWithContent", () => {
     process.env.WORKSPACE_PATH = "/workspace";
   });
 
-  // Helper: name-only list from the first `git diff --name-only` call, then
-  // `git show HEAD:<path>` for each named file, keyed by path.
+  /**
+   * Helper: name-only list from the first `git diff --name-only` call, then
+   * `git show HEAD:<path>` for each named file, keyed by path.
+   */
   function mockGit(names: Array<string>, contentByPath: Record<string, string | Error>) {
     mockedExecFileSync.mockImplementation((_cmd, args) => {
       const argv = args as Array<string>;

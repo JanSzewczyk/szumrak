@@ -22,9 +22,11 @@ export interface ReviewFollowUpFlowInput {
   reviewFeedback: string;
 }
 
-// Best-effort — losing this metadata only means the cost/round table in the PR
-// body won't show this round, not that the round itself fails. Mirrors the
-// label removal's own .catch(() => {}) in review-rounds.ts.
+/**
+ * Best-effort — losing this metadata only means the cost/round table in the
+ * PR body won't show this round, not that the round itself fails. Mirrors the
+ * label removal's own `.catch(() => {})` in review-rounds.ts.
+ */
 async function updateSzumrakMeta(
   owner: string,
   repo: string,
@@ -43,11 +45,15 @@ async function updateSzumrakMeta(
   });
 }
 
-// The review-followup flow: given feedback on an existing PR, continue the
-// agent's work on that PR's branch instead of starting over. This is the flow
-// behind MODE=review-followup (env.MODE === Mode.REVIEW_FOLLOWUP). Takes a
-// single input object (not four positional args) so flows/registry.ts can
-// assign it directly into the registry without wrapping/casting anything.
+/**
+ * The review-followup flow: given feedback on an existing PR, continue the
+ * agent's work on that PR's branch instead of starting over. This is the flow
+ * behind `MODE=review-followup` (`env.MODE === Mode.REVIEW_FOLLOWUP`).
+ *
+ * Takes a single input object (not four positional args) so
+ * flows/registry.ts can assign it directly into the registry without
+ * wrapping/casting anything.
+ */
 export async function runReviewFollowUp({
   owner,
   repo,
@@ -70,12 +76,14 @@ export async function runReviewFollowUp({
   const filesContent = changedFilesWithContent();
   const followUpTask = buildFollowUpTask(branch, originalTask, filesContent, feedback);
 
-  // Each round rebuilds context from the flattened original task + current
-  // changed-file content + feedback. (SDK session resume was tried and dropped:
-  // every review-followup round runs in a fresh `docker run --rm` container, so
-  // there's no local session state to resume — it always failed and fell back
-  // to this anyway.) parseSzumrakMeta is still read, but only to carry the
-  // cost/round table forward across rounds.
+  /**
+   * Each round rebuilds context from the flattened original task + current
+   * changed-file content + feedback. (SDK session resume was tried and
+   * dropped: every review-followup round runs in a fresh `docker run --rm`
+   * container, so there's no local session state to resume — it always
+   * failed and fell back to this anyway.) parseSzumrakMeta is still read,
+   * but only to carry the cost/round table forward across rounds.
+   */
   const previousMeta = parseSzumrakMeta(pr.body ?? "");
   const result = await runAgent(followUpTask);
   if (!result.succeeded) {

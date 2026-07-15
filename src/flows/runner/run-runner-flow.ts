@@ -12,16 +12,22 @@ export interface RunnerFlowInput {
   task: string;
 }
 
-// The runner flow: given a natural-language task, run the agent against
-// WORKSPACE_PATH and (unless DRY_RUN) open a PR with the result. This is the
-// flow behind MODE=runner (env.MODE === Mode.RUNNER) — the "do this task from
-// scratch" entry point, as opposed to flows/review-followup which continues
-// work on an existing PR. Takes a single input object (not a positional
-// `task: string`) so flows/registry.ts can assign it directly into the
-// registry without wrapping/casting anything.
+/**
+ * The runner flow: given a natural-language task, run the agent against
+ * `WORKSPACE_PATH` and (unless `DRY_RUN`) open a PR with the result. This is
+ * the flow behind `MODE=runner` (`env.MODE === Mode.RUNNER`) — the "do this
+ * task from scratch" entry point, as opposed to flows/review-followup which
+ * continues work on an existing PR.
+ *
+ * Takes a single input object (not a positional `task: string`) so
+ * flows/registry.ts can assign it directly into the registry without
+ * wrapping/casting anything.
+ */
 export async function runRunnerFlow({ task }: RunnerFlowInput): Promise<FlowResult> {
-  // Deduplication needs REPO + GitHub App credentials to list PRs, both
-  // guaranteed present by index.ts's env guard whenever DRY_RUN is off.
+  /**
+   * Deduplication needs REPO + GitHub App credentials to list PRs, both
+   * guaranteed present by platform/env.ts's schema whenever DRY_RUN is off.
+   */
   if (!env.DRY_RUN) {
     const { owner, repo } = parseRepo(env.REPO);
     const existingPRUrl = await findOpenPRForTask(owner, repo, task);
@@ -48,9 +54,12 @@ export async function runRunnerFlow({ task }: RunnerFlowInput): Promise<FlowResu
     return { succeeded: true };
   }
 
-  // Adds a visible "Szumrak run info" cost/round table (plus a trailing,
-  // invisible szumrak-meta comment carrying the same data as JSON) so a
-  // reviewer can see at a glance what each round cost — see github/run-info.ts.
+  /**
+   * Adds a visible "Szumrak run info" cost/round table (plus a trailing,
+   * invisible szumrak-meta comment carrying the same data as JSON) so a
+   * reviewer can see at a glance what each round cost — see
+   * github/run-info.ts.
+   */
   const body = appendRunInfo(
     `Task:\n${task}\n\nGenerated automatically by Szumrak.\n\nModel summary:\n${result.finalMessage}`,
     undefined,

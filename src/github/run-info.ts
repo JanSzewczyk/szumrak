@@ -12,14 +12,17 @@ export interface SzumrakMeta {
   rounds: Array<RunInfoRound>;
 }
 
-// The hidden HTML comment carries the cost/round data machine-readably, placed
-// after the visible table so both stay adjacent at the end of the body. Neither
-// ever precedes the "Task:\n...\nGenerated automatically by Szumrak." block
-// index.ts/review-followup.ts write first, so ORIGINAL_TASK_PATTERN in
-// review-followup.ts is unaffected.
 const META_COMMENT_PATTERN = /<!-- szumrak-meta:(.*?) -->/;
 const RUN_INFO_SECTION_PATTERN = /\n---\n\*\*Szumrak run info\*\*[\s\S]*?(?=\n<!-- szumrak-meta:|$)/;
 
+/**
+ * The hidden HTML comment carries the cost/round data machine-readably,
+ * placed after the visible table so both stay adjacent at the end of the
+ * body. Neither ever precedes the "Task:\n...\nGenerated automatically by
+ * Szumrak." block flows/runner/run-runner-flow.ts writes first, so
+ * `ORIGINAL_TASK_PATTERN` in flows/review-followup/review-rounds.ts is
+ * unaffected.
+ */
 export function parseSzumrakMeta(prBody: string): SzumrakMeta | undefined {
   const match = prBody.match(META_COMMENT_PATTERN);
   if (!match) {
@@ -67,11 +70,13 @@ export interface RoundRunInfo {
   numTurns?: number;
 }
 
-// Appends/refreshes both a human-readable cost/round table (visible in the
-// rendered PR, so a reviewer can see at a glance how much each round cost)
-// and the trailing szumrak-meta comment carrying the same data as JSON. Both
-// are stripped and rebuilt from scratch each call, so there's never more than
-// one of each in the body.
+/**
+ * Appends/refreshes both a human-readable cost/round table (visible in the
+ * rendered PR, so a reviewer can see at a glance how much each round cost)
+ * and the trailing szumrak-meta comment carrying the same data as JSON. Both
+ * are stripped and rebuilt from scratch each call, so there's never more
+ * than one of each in the body.
+ */
 export function appendRunInfo(
   prBody: string,
   previousMeta: SzumrakMeta | undefined,

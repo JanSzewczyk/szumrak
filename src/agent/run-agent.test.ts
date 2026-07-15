@@ -1,26 +1,3 @@
-// Test plan for src/agent/run-agent.ts — runAgent(task)
-// 1. Calls query() with the task as `prompt` and cwd/permissionMode/maxTurns from env,
-//    settingSources: [] (never load the target repo's settings.json/hooks), and a
-//    systemPrompt preset with commit-metadata instructions appended.
-// 2. Collects `tool_use` content blocks from assistant messages into `toolCalls`
-//    ({ name, input }), in stream order.
-// 3. `text` content blocks from assistant messages set/overwrite `finalMessage`.
-// 4. A `result` message with subtype "success" and is_error: false sets
-//    succeeded: true, uses message.result as the final message, and captures
-//    total_cost_usd.
-// 5. A `result` message with an error subtype (or is_error: true) leaves
-//    succeeded: false and does not overwrite finalMessage from message.result.
-// 6. Non-assistant, non-result message types (e.g. "system") are ignored for
-//    toolCalls/finalMessage/succeeded but don't break iteration.
-// 7. Exceeding env.MAX_DURATION_MS mid-stream throws "Agent exceeded max duration".
-// 8. When `<WORKSPACE_PATH>/.claude/agent-permissions.json` exists, its `allow`/`deny`
-//    arrays are passed through as `allowedTools`/`disallowedTools`.
-// 9. When the file is missing or invalid JSON, allowedTools/disallowedTools stay
-//    undefined instead of throwing.
-// 10. A trailing ```commit fenced block in the final message ends up as commitMetadata
-//     on the result and is stripped from finalMessage — parseCommitMetadata's own parsing
-//     rules are covered directly in agent/commit-metadata.test.ts.
-
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
@@ -43,8 +20,10 @@ const mockedQuery = vi.mocked(query);
 const mockedExistsSync = vi.mocked(existsSync);
 const mockedReadFileSync = vi.mocked(readFileSync);
 
-// Builds a minimal async generator that yields the given messages, mimicking
-// the shape of the SDK's `Query` (AsyncGenerator<SDKMessage, void>).
+/**
+ * Builds a minimal async generator that yields the given messages, mimicking
+ * the shape of the SDK's `Query` (AsyncGenerator<SDKMessage, void>).
+ */
 async function* streamOf(messages: Array<unknown>) {
   for (const message of messages) {
     yield message as never;
@@ -87,9 +66,11 @@ describe("runAgent", () => {
         cwd: "/workspace",
         permissionMode: "acceptEdits",
         maxTurns: "30",
-        // Never load the target repo's settings.json/settings.local.json —
-        // see the comment in run-agent.ts on why hooks written for
-        // interactive sessions are unsafe to run unattended.
+        /**
+         * Never load the target repo's settings.json/settings.local.json —
+         * see the comment in run-agent.ts on why hooks written for
+         * interactive sessions are unsafe to run unattended.
+         */
         settingSources: [],
         systemPrompt: expect.objectContaining({ type: "preset", preset: "claude_code" })
       })
@@ -134,7 +115,7 @@ describe("runAgent", () => {
       streamOf([
         assistantMessage([{ type: "text", text: "first thought" }]),
         assistantMessage([{ type: "text", text: "second thought" }]),
-        // result without a string `result` field should not overwrite finalMessage
+        /** A result without a string `result` field should not overwrite finalMessage. */
         { type: "result", subtype: "error_during_execution", is_error: true, num_turns: 1 }
       ]) as never
     );
