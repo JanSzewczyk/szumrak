@@ -1,10 +1,3 @@
-// Test plan for src/agent/commit-metadata.ts — parseCommitMetadata(finalMessage)
-// 1. Parses a trailing ```commit fenced block into CommitMetadata.
-// 2. Tolerates the model collapsing "type: <type>" and "subject: ..." into one line.
-// 3. Parses a commit block without a scope, omitting scope from CommitMetadata.
-// 4. Returns undefined when there is no commit block.
-// 5. Returns undefined when the commit block has an invalid type.
-
 import { parseCommitMetadata } from "~/agent/commit-metadata";
 
 vi.mock("~/platform/logger", () => ({

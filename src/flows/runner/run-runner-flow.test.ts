@@ -1,16 +1,3 @@
-// Test plan for src/flows/runner/run-runner-flow.ts — runRunnerFlow({ task })
-// 1. Dedup: when an open PR already exists for the task (and not DRY_RUN), skips the
-//    agent entirely, writes an info step summary, and resolves { succeeded: true }.
-// 2. Dedup is skipped entirely under DRY_RUN (findOpenPRForTask is never called).
-// 3. Agent failure: runAgent succeeding=false skips commitAndOpenPR, writes a failure
-//    step summary, and resolves { succeeded: false }.
-// 4. DRY_RUN happy path: runs the agent but never calls commitAndOpenPR, resolves
-//    { succeeded: true }.
-// 5. Non-DRY_RUN happy path: builds the PR body via appendRunInfo (task + agent summary)
-//    and opens a PR via commitAndOpenPR with the task truncated to 72 chars and the
-//    agent's commitMetadata; resolves { succeeded: true } whether or not a PR was
-//    actually opened (no changes to commit is not a failure).
-
 import type { CommitMetadata } from "~/agent/commit-metadata";
 import { runAgent } from "~/agent/run-agent";
 import { runRunnerFlow } from "~/flows/runner/run-runner-flow";
