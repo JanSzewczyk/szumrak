@@ -6,6 +6,25 @@ import { writeStepSummary } from "./platform/summary";
 import { Mode } from "./types/mode";
 
 async function main() {
+  // First thing logged, before any guard can exit — records how this run was
+  // invoked (mode + the non-secret parameters that shape it) even if it goes
+  // on to fail a guard below. Never logs TASK/REVIEW_FEEDBACK content or any
+  // credential; log() would redact/truncate them anyway (platform/logger.ts),
+  // but keeping secrets out of the call entirely is the safer default.
+  log("run_started", {
+    mode: env.MODE,
+    dryRun: env.DRY_RUN,
+    workspacePath: env.WORKSPACE_PATH,
+    repo: env.REPO,
+    hasTask: Boolean(env.TASK),
+    prNumber: env.PR_NUMBER,
+    hasReviewFeedback: Boolean(env.REVIEW_FEEDBACK),
+    agentModel: env.AGENT_MODEL ?? "default",
+    maxTurns: env.MAX_TURNS,
+    maxDurationMs: env.MAX_DURATION_MS,
+    nodeVersion: process.version
+  });
+
   // When not a dry run we need REPO + the GitHub App credentials to talk to
   // GitHub at all — check upfront so a misconfigured run fails before
   // spending an API turn rather than after.
