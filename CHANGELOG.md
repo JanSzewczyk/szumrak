@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.8.0](https://github.com/JanSzewczyk/szumrak/compare/v1.7.4...v1.8.0) (2026-07-15)
+
+### Features
+
+* implement agent configuration handling with permissions and verification commands ([41a270c](https://github.com/JanSzewczyk/szumrak/commit/41a270c8125093d05fb11db1a4941a8821feba91))
+
 ## [1.7.4](https://github.com/JanSzewczyk/szumrak/compare/v1.7.3...v1.7.4) (2026-07-15)
 
 ### Bug Fixes
