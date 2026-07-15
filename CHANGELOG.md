@@ -3,6 +3,30 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.7.4](https://github.com/JanSzewczyk/szumrak/compare/v1.7.3...v1.7.4) (2026-07-15)
+
+### Bug Fixes
+
+* **env:** restore missing MODE default before Zod discriminated union parse ([e9a3069](https://github.com/JanSzewczyk/szumrak/commit/e9a30698cd7ee460eca28c765408b453fbf80532))
+
+### Documentation
+
+* add Flows section to README with flow descriptions and usage ([792a2a6](https://github.com/JanSzewczyk/szumrak/commit/792a2a658e47a39e6dabe308bf31b767e0997052))
+
+### Code Refactoring
+
+* enhance environment variable handling with discriminated unions for mode-specific requirements ([4b222fa](https://github.com/JanSzewczyk/szumrak/commit/4b222faee99304fa3806e739c1696fb94dca2e40))
+* enhance logging for run invocation details ([487cd42](https://github.com/JanSzewczyk/szumrak/commit/487cd4230fb3a979d0e7e92188dad5f4e9f63dab))
+* remove outdated test plans from test files for improved clarity ([e6f745f](https://github.com/JanSzewczyk/szumrak/commit/e6f745f20a6976d3ee9c95beacb52cfa02c284cc))
+* remove SDK session-resume mechanism (never worked cross-container) ([ecb8614](https://github.com/JanSzewczyk/szumrak/commit/ecb8614274895ef87ab30571925cca9b96dde78b))
+* reorganize project structure and update module imports ([fbf3572](https://github.com/JanSzewczyk/szumrak/commit/fbf35724474d16891e8b6802e4ce86a32c222a4a))
+* streamline environment variable validation for run modes ([3d3353f](https://github.com/JanSzewczyk/szumrak/commit/3d3353f7b6b680d5e996c5b41df3c376837b90c2))
+* update comments to JSDoc format for improved documentation clarity ([6909ee0](https://github.com/JanSzewczyk/szumrak/commit/6909ee04406047a255c239b7605f986679496d18))
+
+### Continuous Integration
+
+* **template:** pre-install target repo deps so the agent can self-verify ([1f2b8dc](https://github.com/JanSzewczyk/szumrak/commit/1f2b8dc334b47b8625c53167114c596c39ffb3bb))
+
 ## [1.7.3](https://github.com/JanSzewczyk/szumrak/compare/v1.7.2...v1.7.3) (2026-07-14)
 
 ### Performance Improvements
