@@ -1,6 +1,7 @@
 import type { StandardSchemaV1 } from "@t3-oss/env-core";
 import { createEnv } from "@t3-oss/env-core";
 import { z } from "zod";
+import { Mode } from "~/types/mode";
 
 // Fail fast with a readable message instead of a raw stack trace when the
 // environment is misconfigured. This runs at import time — before the agent
@@ -21,14 +22,15 @@ export const env = createEnv({
       .string()
       .min(1)
       .optional()
-      .describe("Natural-language task for the agent to perform; required when MODE=initial"),
+      .describe("Natural-language task for the agent to perform; required when MODE=runner"),
     MODE: z
-      .enum(["initial", "review-followup"])
-      .default("initial")
+      .enum([Mode.RUNNER, Mode.REVIEW_FOLLOWUP])
+      .default(Mode.RUNNER)
       .describe(
-        "initial: run TASK and open a new PR. review-followup: address review feedback on PR_NUMBER's existing branch instead."
+        "runner: run TASK and open a new PR. review-followup: address review feedback on PR_NUMBER's existing branch instead."
       ),
     PR_NUMBER: z.coerce
+
       .number()
       .int()
       .positive()

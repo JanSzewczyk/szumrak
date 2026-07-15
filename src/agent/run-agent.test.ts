@@ -1,4 +1,4 @@
-// Test plan for src/run-agent.ts — runAgent(task)
+// Test plan for src/agent/run-agent.ts — runAgent(task)
 // 1. Calls query() with the task as `prompt` and cwd/permissionMode/maxTurns from env,
 //    settingSources: [] (never load the target repo's settings.json/hooks), and a
 //    systemPrompt preset with commit-metadata instructions appended.
@@ -17,21 +17,20 @@
 //    arrays are passed through as `allowedTools`/`disallowedTools`.
 // 9. When the file is missing or invalid JSON, allowedTools/disallowedTools stay
 //    undefined instead of throwing.
-// 10. A trailing ```commit fenced block in the final message is parsed into
-//     commitMetadata and stripped from the returned finalMessage.
-// 11. A missing, malformed, or invalid-type commit block leaves commitMetadata
-//     undefined and finalMessage unchanged.
+// 10. A trailing ```commit fenced block in the final message ends up as commitMetadata
+//     on the result and is stripped from finalMessage — parseCommitMetadata's own parsing
+//     rules are covered directly in agent/commit-metadata.test.ts.
 
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
-import { runAgent } from "~/run-agent";
+import { runAgent } from "~/agent/run-agent";
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: vi.fn()
 }));
 
-vi.mock("~/lib/logger", () => ({
+vi.mock("~/platform/logger", () => ({
   log: vi.fn()
 }));
 
@@ -240,7 +239,7 @@ describe("runAgent", () => {
     );
   });
 
-  test("parses a trailing commit block into commitMetadata and strips it from finalMessage", async () => {
+  test("wires a trailing commit block into result.commitMetadata and strips it from finalMessage", async () => {
     const finalText = [
       "I added a test file covering the edge cases.",
       "",
@@ -264,45 +263,6 @@ describe("runAgent", () => {
     expect(result.finalMessage).toBe("I added a test file covering the edge cases.");
   });
 
-  test("tolerates the model collapsing 'type: <type>' and 'subject: ...' into one line", async () => {
-    const finalText = [
-      "```commit",
-      "test: add unit tests for getInitials function in utils/users.test.ts",
-      "branch: add-users-getinitials-tests",
-      "```"
-    ].join("\n");
-    mockedQuery.mockReturnValue(streamOf([resultMessage({ result: finalText })]) as never);
-
-    const result = await runAgent("task");
-
-    expect(result.commitMetadata).toEqual({
-      type: "test",
-      scope: undefined,
-      subject: "add unit tests for getInitials function in utils/users.test.ts".slice(0, 50),
-      branchSlug: "add-users-getinitials-tests"
-    });
-  });
-
-  test("parses a commit block without a scope, omitting scope from commitMetadata", async () => {
-    const finalText = [
-      "```commit",
-      "type: docs",
-      "subject: clarify setup instructions",
-      "branch: clarify-setup-docs",
-      "```"
-    ].join("\n");
-    mockedQuery.mockReturnValue(streamOf([resultMessage({ result: finalText })]) as never);
-
-    const result = await runAgent("task");
-
-    expect(result.commitMetadata).toEqual({
-      type: "docs",
-      scope: undefined,
-      subject: "clarify setup instructions",
-      branchSlug: "clarify-setup-docs"
-    });
-  });
-
   test("leaves commitMetadata undefined when there is no commit block", async () => {
     mockedQuery.mockReturnValue(streamOf([resultMessage({ result: "All done, no fenced block here." })]) as never);
 
@@ -310,20 +270,5 @@ describe("runAgent", () => {
 
     expect(result.commitMetadata).toBeUndefined();
     expect(result.finalMessage).toBe("All done, no fenced block here.");
-  });
-
-  test("leaves commitMetadata undefined when the commit block has an invalid type", async () => {
-    const finalText = [
-      "```commit",
-      "type: not-a-real-type",
-      "subject: something",
-      "branch: something-slug",
-      "```"
-    ].join("\n");
-    mockedQuery.mockReturnValue(streamOf([resultMessage({ result: finalText })]) as never);
-
-    const result = await runAgent("task");
-
-    expect(result.commitMetadata).toBeUndefined();
   });
 });

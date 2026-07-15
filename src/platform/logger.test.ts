@@ -1,4 +1,4 @@
-// Test plan for src/lib/logger.ts
+// Test plan for src/platform/logger.ts
 // 1. log() writes a JSON line to console.log with ts/event/data merged in.
 // 2. log() calls appendFileSync with the derived LOG_PATH and a trailing newline.
 // 3. log() defaults `data` to {} when omitted, still producing valid JSON.
@@ -30,7 +30,7 @@ describe("logger", () => {
 
   describe("log", () => {
     test("writes a JSON line to console.log containing timestamp, event and data", async () => {
-      const { log } = await import("~/lib/logger");
+      const { log } = await import("~/platform/logger");
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
       log("agent_start", { task: "do the thing" });
@@ -45,7 +45,7 @@ describe("logger", () => {
     });
 
     test("defaults data to an empty object when omitted", async () => {
-      const { log } = await import("~/lib/logger");
+      const { log } = await import("~/platform/logger");
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
       log("no_changes");
@@ -60,7 +60,7 @@ describe("logger", () => {
       process.env.WORKSPACE_PATH = "/workspace";
       delete process.env.AGENT_LOG_PATH;
       vi.resetModules();
-      const { log } = await import("~/lib/logger");
+      const { log } = await import("~/platform/logger");
       vi.spyOn(console, "log").mockImplementation(() => {});
 
       log("git", { args: ["status"] });
@@ -76,7 +76,7 @@ describe("logger", () => {
       process.env.WORKSPACE_PATH = "/workspace";
       process.env.AGENT_LOG_PATH = "/custom/run.jsonl";
       vi.resetModules();
-      const { log } = await import("~/lib/logger");
+      const { log } = await import("~/platform/logger");
       vi.spyOn(console, "log").mockImplementation(() => {});
 
       log("agent_end");
@@ -92,7 +92,7 @@ describe("logger", () => {
       vi.mocked(appendFileSync).mockImplementationOnce(() => {
         throw new Error("EACCES: permission denied");
       });
-      const { log } = await import("~/lib/logger");
+      const { log } = await import("~/platform/logger");
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
       expect(() => log("agent_end", { succeeded: true })).not.toThrow();
@@ -110,7 +110,7 @@ describe("logger", () => {
       ["Slack token", ["xoxb", "1234567890", "abcdefghijklmnop"].join("-")],
       ["PEM private key block", "-----BEGIN RSA PRIVATE KEY-----\nMIIBOgIBAAJBAK\n-----END RSA PRIVATE KEY-----"]
     ])("redacts a %s found anywhere in the logged data", async (_label, secret) => {
-      const { log } = await import("~/lib/logger");
+      const { log } = await import("~/platform/logger");
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
       log("tool_call", { input: { nested: [{ content: `before ${secret} after` }] } });
@@ -123,7 +123,7 @@ describe("logger", () => {
     });
 
     test("truncates strings longer than the length cap instead of logging full file content", async () => {
-      const { log } = await import("~/lib/logger");
+      const { log } = await import("~/platform/logger");
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
       const fullFileContent = "x".repeat(1000);
 
@@ -137,7 +137,7 @@ describe("logger", () => {
     });
 
     test("leaves short strings and non-string values unchanged", async () => {
-      const { log } = await import("~/lib/logger");
+      const { log } = await import("~/platform/logger");
       const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
       log("tool_call", { input: { path: "src/foo.ts", count: 3, ok: true, missing: null } });

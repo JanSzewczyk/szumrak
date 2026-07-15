@@ -1,4 +1,4 @@
-// Test plan for src/review-followup.ts — runReviewFollowUp(owner, repo, prNumber, feedback)
+// Test plan for src/flows/review-followup/run-review-followup-flow.ts — runReviewFollowUp(owner, repo, prNumber, feedback)
 // 1. Round limit: when the PR's "review-round-N" label already reads the max (3),
 //    skips entirely (no checkout, no runAgent call), writes a warning step summary,
 //    and returns { succeeded: false }.
@@ -8,43 +8,45 @@
 //    (removing review-round-N, adding review-round-N+1).
 // 3. No prior round label: treated as round 0, follow-up succeeds and adds
 //    "review-round-1" without attempting to remove a nonexistent label.
-// 4. Agent failure: runAgent succeeding=false short-circuits before checkout... no,
-//    checkout happens before runAgent (the agent needs the branch checked out first);
-//    a failed run skips the push/label step and returns { succeeded: false } with a
-//    step-summary write.
+// 4. Agent failure: checkout happens before runAgent (the agent needs the branch
+//    checked out first); a failed run skips the push/label step and returns
+//    { succeeded: false } with a step-summary write.
 // 5. DRY_RUN: skips pushFollowUpCommit and the round-label update entirely.
 // 6. No changes to push: pushFollowUpCommit returning false skips the round-label
 //    update but still resolves succeeded: true.
 // 7. Missing/unparsable original task in the PR body: falls back to a placeholder
-//    string instead of throwing.
+//    string instead of throwing (round-parsing/task-extraction details themselves
+//    are covered directly in review-rounds.test.ts).
+// 8. Writes the cost/round table back to the PR body via pulls.update after a
+//    successful round, and never fails the round when that update rejects.
 
-import { changedFilesWithContent, checkoutExistingBranch, pushFollowUpCommit } from "~/git";
-import { octokit } from "~/lib/github";
-import { runReviewFollowUp } from "~/review-followup";
-import { runAgent } from "~/run-agent";
+import { runAgent } from "~/agent/run-agent";
+import { runReviewFollowUp } from "~/flows/review-followup/run-review-followup-flow";
+import { octokit } from "~/github/client";
+import { changedFilesWithContent, checkoutExistingBranch, pushFollowUpCommit } from "~/github/git-operations";
 
-vi.mock("~/git", () => ({
+vi.mock("~/github/git-operations", () => ({
   checkoutExistingBranch: vi.fn(),
   changedFilesWithContent: vi.fn(),
   pushFollowUpCommit: vi.fn()
 }));
 
-vi.mock("~/lib/github", () => ({
+vi.mock("~/github/client", () => ({
   octokit: {
     pulls: { get: vi.fn(), update: vi.fn() },
     issues: { addLabels: vi.fn(), removeLabel: vi.fn() }
   }
 }));
 
-vi.mock("~/run-agent", () => ({
+vi.mock("~/agent/run-agent", () => ({
   runAgent: vi.fn()
 }));
 
-vi.mock("~/lib/logger", () => ({
+vi.mock("~/platform/logger", () => ({
   log: vi.fn()
 }));
 
-vi.mock("~/lib/summary", () => ({
+vi.mock("~/platform/summary", () => ({
   writeStepSummary: vi.fn()
 }));
 

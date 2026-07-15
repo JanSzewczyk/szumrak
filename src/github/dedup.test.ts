@@ -1,19 +1,19 @@
-// Test plan for src/lib/dedup.ts — findOpenPRForTask(owner, repo, task)
+// Test plan for src/github/dedup.ts — findOpenPRForTask(owner, repo, task)
 // 1. Returns the html_url of an open PR whose body contains "Task:\n<task>".
 // 2. Returns null when no open PR's body contains that text.
 // 3. Returns null when an open PR has no body at all.
 // 4. Calls octokit.pulls.list with { owner, repo, state: "open" }.
 
-import { findOpenPRForTask } from "~/lib/dedup";
-import { octokit } from "~/lib/github";
+import { octokit } from "~/github/client";
+import { findOpenPRForTask } from "~/github/dedup";
 
-vi.mock("~/lib/github", () => ({
+vi.mock("~/github/client", () => ({
   octokit: {
     pulls: { list: vi.fn() }
   }
 }));
 
-vi.mock("~/lib/logger", () => ({
+vi.mock("~/platform/logger", () => ({
   log: vi.fn()
 }));
 

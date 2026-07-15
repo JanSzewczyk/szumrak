@@ -1,5 +1,5 @@
 import { appendFileSync } from "node:fs";
-import { env } from "~/env";
+import { env } from "~/platform/env";
 
 // GITHUB_STEP_SUMMARY is a GH Actions-provided file path rendered as markdown
 // on the job's summary page — the closest equivalent we have today to the

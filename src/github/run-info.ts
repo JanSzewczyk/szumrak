@@ -1,4 +1,4 @@
-import { log } from "./logger";
+import { log } from "~/platform/logger";
 
 export interface RunInfoRound {
   round: number;

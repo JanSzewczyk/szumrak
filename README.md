@@ -162,8 +162,8 @@ from source. See `target-repo-templates/.github/workflows/szumrak.yml` for a ref
 | Variable | Required | Description |
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | yes | Claude API key |
-| `TASK` | yes when `MODE=initial` | the task for the agent, in natural language |
-| `MODE` | no (default `initial`) | `initial` runs `TASK` and opens a new PR; `review-followup` addresses review feedback on `PR_NUMBER`'s existing branch instead |
+| `TASK` | yes when `MODE=runner` | the task for the agent, in natural language |
+| `MODE` | no (default `runner`) | `runner` runs `TASK` and opens a new PR; `review-followup` addresses review feedback on `PR_NUMBER`'s existing branch instead |
 | `PR_NUMBER` | yes when `MODE=review-followup` | PR number to follow up on |
 | `REVIEW_FEEDBACK` | yes when `MODE=review-followup` | reviewer's feedback text to address |
 | `WORKSPACE_PATH` | no (default `/workspace`) | path to the target repository |
@@ -176,9 +176,9 @@ from source. See `target-repo-templates/.github/workflows/szumrak.yml` for a ref
 | `MAX_TURNS` | no (default `30`) | agent turn limit |
 | `MAX_DURATION_MS` | no (default `900000`) | run duration limit |
 | `AGENT_LOG_PATH` | no (default `<WORKSPACE_PATH>/agent-run.jsonl`) | JSONL log path |
-| `GITHUB_STEP_SUMMARY` | no | GH Actions-provided step summary file path; read by `src/lib/summary.ts` for failure/skip notices |
+| `GITHUB_STEP_SUMMARY` | no | GH Actions-provided step summary file path; read by `src/platform/summary.ts` for failure/skip notices |
 
-All variables are validated at startup by [`src/env.ts`](./src/env.ts) — an invalid or missing
+All variables are validated at startup by [`src/platform/env.ts`](./src/platform/env.ts) — an invalid or missing
 required variable prints a readable error list and exits before any API call is made. See
 [`.env.example`](./.env.example) for a ready-to-copy template with inline descriptions.
 
@@ -194,9 +194,9 @@ npm run test:coverage # vitest run --coverage
 
 Tests are colocated with source (`src/foo.ts` → `src/foo.test.ts`) and mock every external
 effect — no real git commands, GitHub API calls, Claude API calls, or filesystem writes happen
-while running the suite. `src/env.ts` and `src/index.ts` are excluded from coverage on purpose:
-`env.ts` validates and can `process.exit(1)` at import time, and `index.ts` is a thin entrypoint
-that calls `main()` immediately on import rather than holding testable logic itself.
+while running the suite. `src/platform/env.ts` and `src/index.ts` are excluded from coverage on
+purpose: `env.ts` validates and can `process.exit(1)` at import time, and `index.ts` is a thin
+entrypoint that calls `main()` immediately on import rather than holding testable logic itself.
 
 ---
 
@@ -233,14 +233,28 @@ szumrak/
 ├── docker/
 │   └── Dockerfile              # tsx entrypoint — no compile step, no dist/
 ├── src/
-│   ├── index.ts                 # entrypoint — guards required env, runs the agent, opens the PR
-│   ├── run-agent.ts             # wraps the Claude Agent SDK query() stream
-│   ├── git.ts                    # branch → commit → push → PR (commitAndOpenPR)
-│   ├── env.ts                     # Zod + T3 Env — the single source of validated configuration
-│   ├── *.test.ts                  # colocated Vitest suites
-│   └── lib/
-│       ├── github.ts               # Octokit client
-│       └── logger.ts                # structured JSONL logging
+│   ├── index.ts                 # entrypoint — guards required env, dispatches to a flow by MODE
+│   ├── types/                     # types/enums shared across layers (flows AND platform need them)
+│   │   └── mode.ts                  # const Mode { RUNNER, REVIEW_FOLLOWUP } — single source of truth for MODE
+│   ├── flows/                     # one flow per orchestration path, each in its own folder
+│   │   ├── registry.ts               # Record<Mode, runner> — the only place index.ts dispatches through
+│   │   ├── types.ts                   # shared FlowResult contract
+│   │   ├── runner/                     # MODE=runner — run TASK from scratch and open a new PR
+│   │   └── review-followup/             # MODE=review-followup — continue an existing PR's branch
+│   ├── agent/                       # reusable Claude Agent SDK wrapper, used by every flow
+│   │   ├── run-agent.ts               # wraps the SDK query() stream
+│   │   └── commit-metadata.ts          # Conventional Commits type/scope/subject parsing
+│   ├── github/                      # everything that touches git/GitHub, used by every flow
+│   │   ├── client.ts                  # Octokit client (GitHub App auth)
+│   │   ├── git-operations.ts           # git() CLI wrapper, checkout/diff/push
+│   │   ├── pull-requests.ts             # commitAndOpenPR
+│   │   ├── repo.ts                       # parseRepo("owner/repo")
+│   │   ├── dedup.ts                       # skip re-running a task with an already-open PR
+│   │   └── run-info.ts                     # cost/round table appended to the PR body
+│   └── platform/                    # cross-cutting infra: env, logging, CI step summaries
+│       ├── env.ts                     # Zod + T3 Env — the single source of validated configuration
+│       ├── logger.ts                   # structured JSONL logging
+│       └── summary.ts                   # GITHUB_STEP_SUMMARY writer
 ├── target-repo-templates/         # files meant to be copied INTO the target repo, not consumed here
 │   ├── CLAUDE.md
 │   └── .claude/settings.json
@@ -252,13 +266,23 @@ szumrak/
 
 ### Key Directories
 
-- **`src/`** — the agent engine itself; see [`CLAUDE.md`](./CLAUDE.md) for the full execution flow
+- **`src/types/`** — types/enums shared across layers, e.g. `Mode`, needed by both `flows/` and
+  `platform/env.ts`; kept out of `flows/` so `platform/` doesn't have to import from a "higher"
+  layer to validate `MODE`
+- **`src/flows/`** — one folder per orchestration flow (`runner`, `review-followup`, ...); adding a
+  new flow means adding a folder here plus a `Mode` value and a `flowRegistry` entry, without
+  touching existing flows
+- **`src/agent/`** and **`src/github/`** — reusable building blocks every flow composes: the SDK
+  wrapper and the git/GitHub integration, respectively
+- **`src/platform/`** — env validation, logging, and CI summaries; no flow-specific logic
 - **`target-repo-templates/`** — starter `CLAUDE.md` / `.claude/settings.json` for the *target*
   repository the agent will operate on, not for this repo
 
+See [`CLAUDE.md`](./CLAUDE.md) for the full execution flow through these modules.
+
 ### Important Configuration Files
 
-- **`src/env.ts`** — validated runtime configuration (see [Environment Variables](#-environment-variables))
+- **`src/platform/env.ts`** — validated runtime configuration (see [Environment Variables](#-environment-variables))
 - **`vitest.config.ts`** — test runner config, including the `~/*` path alias resolution tests need
 - **`docker/Dockerfile`** — the only build artifact this repo produces
 

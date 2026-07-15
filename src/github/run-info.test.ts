@@ -1,4 +1,4 @@
-// Test plan for src/lib/run-info.ts — parseSzumrakMeta(prBody), appendRunInfo(prBody, previousMeta, round, result)
+// Test plan for src/github/run-info.ts — parseSzumrakMeta(prBody), appendRunInfo(prBody, previousMeta, round, result)
 // 1. parseSzumrakMeta returns undefined when the body has no szumrak-meta comment.
 // 2. parseSzumrakMeta returns undefined (not throw) when the comment's JSON is malformed.
 // 3. parseSzumrakMeta returns undefined when the parsed JSON has no "rounds" array (old-shape comment).
@@ -11,9 +11,9 @@
 //    present in the body, so re-running it never leaves more than one of each.
 // 8. Missing costUsd/numTurns render as "n/a" in the table instead of "undefined".
 
-import { appendRunInfo, parseSzumrakMeta } from "~/lib/run-info";
+import { appendRunInfo, parseSzumrakMeta } from "~/github/run-info";
 
-vi.mock("~/lib/logger", () => ({
+vi.mock("~/platform/logger", () => ({
   log: vi.fn()
 }));
 

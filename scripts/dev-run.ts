@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
-import { env } from "~/env";
+import { env } from "~/platform/env";
 
 // A plain npm script with `$TARGET_REPO_PATH:/workspace` only works under a
 // POSIX shell. npm on Windows runs scripts through cmd.exe by default, which

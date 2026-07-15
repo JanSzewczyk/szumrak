@@ -1,5 +1,5 @@
-import { octokit } from "./github";
-import { log } from "./logger";
+import { log } from "~/platform/logger";
+import { octokit } from "./client";
 
 // Notion page 16's original design matches an existing open PR by
 // `#${issueNumber}` in its body — not available here, since the workflow is

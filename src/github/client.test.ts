@@ -1,4 +1,4 @@
-// Test plan for src/lib/github.ts
+// Test plan for src/github/client.ts
 // 1. octokit is exported and is an Octokit instance exposing the REST namespaces
 //    (pulls, issues) that src/git.ts relies on.
 // 2. octokit is constructed with authStrategy: createAppAuth and the App
@@ -32,14 +32,14 @@ describe("github", () => {
 
   test("exports an Octokit client instance", async () => {
     vi.resetModules();
-    const { octokit } = await import("~/lib/github");
+    const { octokit } = await import("~/github/client");
 
     expect(octokit).toBeInstanceOf(Octokit);
   });
 
-  test("exposes the REST namespaces used by git.ts", async () => {
+  test("exposes the REST namespaces used by github/git-operations.ts", async () => {
     vi.resetModules();
-    const { octokit } = await import("~/lib/github");
+    const { octokit } = await import("~/github/client");
 
     expect(octokit.pulls.create).toBeTypeOf("function");
     expect(octokit.issues.addLabels).toBeTypeOf("function");
@@ -48,7 +48,7 @@ describe("github", () => {
   test("constructs the App auth strategy with credentials from env", async () => {
     vi.resetModules();
 
-    await import("~/lib/github");
+    await import("~/github/client");
 
     expect(mockedCreateAppAuth).toHaveBeenCalledWith(
       expect.objectContaining({ appId: "123456", installationId: "789" })
@@ -57,7 +57,7 @@ describe("github", () => {
 
   test("getInstallationToken resolves the raw token string", async () => {
     vi.resetModules();
-    const { getInstallationToken } = await import("~/lib/github");
+    const { getInstallationToken } = await import("~/github/client");
 
     const token = await getInstallationToken();
 
