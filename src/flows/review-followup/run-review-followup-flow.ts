@@ -15,6 +15,13 @@ import {
   updateRoundLabel
 } from "./review-rounds";
 
+export interface ReviewFollowUpFlowInput {
+  owner: string;
+  repo: string;
+  prNumber: number;
+  reviewFeedback: string;
+}
+
 // Best-effort — losing this metadata only means the cost/round table in the PR
 // body won't show this round, not that the round itself fails. Mirrors the
 // label removal's own .catch(() => {}) in review-rounds.ts.
@@ -38,13 +45,15 @@ async function updateSzumrakMeta(
 
 // The review-followup flow: given feedback on an existing PR, continue the
 // agent's work on that PR's branch instead of starting over. This is the flow
-// behind MODE=review-followup (env.MODE === Mode.REVIEW_FOLLOWUP).
-export async function runReviewFollowUp(
-  owner: string,
-  repo: string,
-  prNumber: number,
-  feedback: string
-): Promise<FlowResult> {
+// behind MODE=review-followup (env.MODE === Mode.REVIEW_FOLLOWUP). Takes a
+// single input object (not four positional args) so flows/registry.ts can
+// assign it directly into the registry without wrapping/casting anything.
+export async function runReviewFollowUp({
+  owner,
+  repo,
+  prNumber,
+  reviewFeedback: feedback
+}: ReviewFollowUpFlowInput): Promise<FlowResult> {
   const { data: pr } = await octokit.pulls.get({ owner, repo, pull_number: prNumber });
   const round = getRoundCount(pr.labels);
 

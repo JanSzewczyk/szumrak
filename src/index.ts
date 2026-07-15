@@ -11,39 +11,31 @@ async function main() {
   // on to fail a guard below. Never logs TASK/REVIEW_FEEDBACK content or any
   // credential; log() would redact/truncate them anyway (platform/logger.ts),
   // but keeping secrets out of the call entirely is the safer default.
+  // env.TASK/PR_NUMBER/REVIEW_FEEDBACK only exist on one branch of env's
+  // MODE-discriminated type each (see platform/env.ts) — `in` narrows per
+  // branch, and also reflects runtime truth: Zod strips keys the matched
+  // branch doesn't declare, so e.g. "TASK" in env is false, not just
+  // unnarrowed, on the review-followup branch.
   log("run_started", {
     mode: env.MODE,
     dryRun: env.DRY_RUN,
     workspacePath: env.WORKSPACE_PATH,
     repo: env.REPO,
-    hasTask: Boolean(env.TASK),
-    prNumber: env.PR_NUMBER,
-    hasReviewFeedback: Boolean(env.REVIEW_FEEDBACK),
-    agentModel: env.AGENT_MODEL ?? "default",
+    hasTask: "TASK" in env,
+    prNumber: "PR_NUMBER" in env ? env.PR_NUMBER : undefined,
+    hasReviewFeedback: "REVIEW_FEEDBACK" in env,
+    agentModel: env.AGENT_MODEL,
     maxTurns: env.MAX_TURNS,
     maxDurationMs: env.MAX_DURATION_MS,
     nodeVersion: process.version
   });
 
-  // When not a dry run we need REPO + the GitHub App credentials to talk to
-  // GitHub at all — check upfront so a misconfigured run fails before
-  // spending an API turn rather than after.
-  if (!env.DRY_RUN && (!env.REPO || !env.GH_APP_ID || !env.GH_APP_PRIVATE_KEY || !env.GH_APP_INSTALLATION_ID)) {
-    console.error("REPO, GH_APP_ID, GH_APP_PRIVATE_KEY, and GH_APP_INSTALLATION_ID are required unless DRY_RUN=true.");
-    process.exit(1);
-  }
-
   try {
-    // Each mode validates only the env it needs, right next to where it
-    // dispatches — review-followup gets its task from the PR body instead of
-    // TASK, so it never needs TASK required, and vice versa for PR_NUMBER/
-    // REVIEW_FEEDBACK.
+    // No manual guards here for TASK/PR_NUMBER/REVIEW_FEEDBACK (MODE-dependent)
+    // or REPO/GH_APP_* (DRY_RUN-dependent) — platform/env.ts's schema already
+    // guarantees all of them; a run missing any of them never gets past the
+    // `env` import in the first place.
     if (env.MODE === Mode.REVIEW_FOLLOWUP) {
-      if (!env.PR_NUMBER || !env.REVIEW_FEEDBACK) {
-        console.error("PR_NUMBER and REVIEW_FEEDBACK are required when MODE=review-followup.");
-        process.exit(1);
-      }
-
       const { owner, repo } = parseRepo(env.REPO);
       const result = await flowRegistry[Mode.REVIEW_FOLLOWUP]({
         owner,
@@ -58,11 +50,6 @@ async function main() {
     }
 
     if (env.MODE === Mode.RUNNER) {
-      if (!env.TASK) {
-        console.error("TASK is required when MODE=runner.");
-        process.exit(1);
-      }
-
       const result = await flowRegistry[Mode.RUNNER]({ task: env.TASK });
       if (!result.succeeded) {
         process.exit(1);

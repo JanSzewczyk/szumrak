@@ -19,6 +19,10 @@ vi.mock("~/platform/logger", () => ({
 
 const BASE_BODY = "Task:\nAdd a test\n\nGenerated automatically by Szumrak.\n\nModel summary:\ndone";
 
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
 describe("parseSzumrakMeta", () => {
   test("returns undefined when there is no szumrak-meta comment", () => {
     expect(parseSzumrakMeta(BASE_BODY)).toBeUndefined();
