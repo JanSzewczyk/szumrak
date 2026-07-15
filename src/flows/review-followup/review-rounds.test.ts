@@ -1,21 +1,3 @@
-// Test plan for src/flows/review-followup/review-rounds.ts
-// getRoundCount(labels):
-// 1. Returns the N from a "review-round-N" label.
-// 2. Returns 0 when no round label is present.
-//
-// updateRoundLabel(owner, repo, prNumber, previousRound):
-// 3. previousRound 0: adds "review-round-1" without attempting to remove anything.
-// 4. previousRound > 0: removes "review-round-<previousRound>" and adds
-//    "review-round-<previousRound + 1>".
-// 5. Tolerates the previous label already being gone (removeLabel rejecting).
-//
-// extractOriginalTask(prBody):
-// 6. Extracts the task text between "Task:\n" and "\n\nGenerated automatically by Szumrak.".
-// 7. Falls back to a placeholder when the marker isn't present.
-//
-// buildFollowUpTask(branch, originalTask, filesContent, feedback):
-// 8. Includes the branch name, original task, file content, and feedback in the prompt.
-
 import {
   buildFollowUpTask,
   extractOriginalTask,

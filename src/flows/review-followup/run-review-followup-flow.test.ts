@@ -1,25 +1,3 @@
-// Test plan for src/flows/review-followup/run-review-followup-flow.ts — runReviewFollowUp({ owner, repo, prNumber, reviewFeedback })
-// 1. Round limit: when the PR's "review-round-N" label already reads the max (3),
-//    skips entirely (no checkout, no runAgent call), writes a warning step summary,
-//    and returns { succeeded: false }.
-// 2. Happy path: checks out the PR's head branch, builds a follow-up prompt from the
-//    original task (parsed from the PR body), the diff against main, and the feedback;
-//    runs the agent; pushes the follow-up commit; and bumps the round label
-//    (removing review-round-N, adding review-round-N+1).
-// 3. No prior round label: treated as round 0, follow-up succeeds and adds
-//    "review-round-1" without attempting to remove a nonexistent label.
-// 4. Agent failure: checkout happens before runAgent (the agent needs the branch
-//    checked out first); a failed run skips the push/label step and returns
-//    { succeeded: false } with a step-summary write.
-// 5. DRY_RUN: skips pushFollowUpCommit and the round-label update entirely.
-// 6. No changes to push: pushFollowUpCommit returning false skips the round-label
-//    update but still resolves succeeded: true.
-// 7. Missing/unparsable original task in the PR body: falls back to a placeholder
-//    string instead of throwing (round-parsing/task-extraction details themselves
-//    are covered directly in review-rounds.test.ts).
-// 8. Writes the cost/round table back to the PR body via pulls.update after a
-//    successful round, and never fails the round when that update rejects.
-
 import { faker } from "@faker-js/faker";
 import type { CommitMetadata } from "~/agent/commit-metadata";
 import { runAgent } from "~/agent/run-agent";

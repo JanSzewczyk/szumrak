@@ -1,9 +1,3 @@
-// Test plan for src/github/dedup.ts — findOpenPRForTask(owner, repo, task)
-// 1. Returns the html_url of an open PR whose body contains "Task:\n<task>".
-// 2. Returns null when no open PR's body contains that text.
-// 3. Returns null when an open PR has no body at all.
-// 4. Calls octokit.pulls.list with { owner, repo, state: "open" }.
-
 import { octokit } from "~/github/client";
 import { findOpenPRForTask } from "~/github/dedup";
 

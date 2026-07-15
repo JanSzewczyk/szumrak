@@ -1,10 +1,3 @@
-// Test plan for src/platform/summary.ts — writeStepSummary(message, icon?)
-// 1. When GITHUB_STEP_SUMMARY is set, appends a "❌ **Szumrak** — <message>" line
-//    (plus newline) to that path.
-// 2. When GITHUB_STEP_SUMMARY is unset, does nothing (no appendFileSync call).
-// 3. Swallows appendFileSync errors without throwing.
-// 4. A custom icon argument replaces the default "❌" prefix.
-
 import { appendFileSync } from "node:fs";
 
 vi.mock("node:fs", () => ({

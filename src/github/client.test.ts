@@ -1,15 +1,3 @@
-// Test plan for src/github/client.ts
-// 1. octokit is exported and is an Octokit instance exposing the REST namespaces
-//    (pulls, issues) that src/git.ts relies on.
-// 2. octokit is constructed with authStrategy: createAppAuth and the App
-//    credentials from env (appId, privateKey, installationId) — this is what
-//    makes PRs show up authored by the GitHub App's bot user instead of
-//    whoever owns a personal token.
-// 3. getInstallationToken() resolves the raw token string via a separate
-//    createAppAuth({ type: "installation" }) call — needed by git.ts to embed
-//    the token directly in a git remote URL, which Octokit's own auth
-//    strategy doesn't expose.
-
 import { createAppAuth } from "@octokit/auth-app";
 import { Octokit } from "@octokit/rest";
 

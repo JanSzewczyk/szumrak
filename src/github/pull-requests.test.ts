@@ -1,29 +1,3 @@
-// Test plan for src/github/pull-requests.ts — commitAndOpenPR(taskSummary, body, commitMetadata?)
-// 1. "no changes" path: `git status --porcelain` returns empty output → returns null,
-//    no add/commit/push/PR calls happen (remote auth + branch checkout still run).
-// 2. "has changes" happy path: full flow (remote auth, checkout, status, add, commit,
-//    push, PR create, add label) runs in order and resolves to pr.data.html_url.
-// 3. execFileSync is invoked with an argument array (never a single interpolated
-//    string) for every git subcommand — this is the command-injection guard the repo
-//    explicitly calls out; assert the exact argv shapes.
-// 4. Without commitMetadata: falls back to "chore(agent): <taskSummary, truncated to
-//    72 chars>" for both the commit message and PR title (title == commit message,
-//    since GitHub squash-merge uses the PR title as the final commit that
-//    semantic-release parses).
-// 5. With commitMetadata: branch is <type>/<slug>-<suffix>, commit message and
-//    PR title are "<type>(<scope>): <subject>" (scope omitted when absent).
-// 6. The remote is reauthenticated via an embedded token (`configureGitRemoteAuth`)
-//    before anything else, and that call is never routed through the logging git()
-//    wrapper (the token must never reach agent-run.jsonl).
-// 7. env.REPO validation: throws a clear error when REPO is missing or not in
-//    "owner/repo" format, before any git or Octokit call happens.
-// 8. octokit.pulls.create is called with the correct owner/repo/head/base/title/body,
-//    and octokit.issues.addLabels is called with the "ai-generated" label for the
-//    created PR's issue_number.
-//
-// parseRepo(repo) itself (splitting/validating "owner/repo") is also covered here,
-// since pull-requests.ts is its primary consumer.
-
 import { execFileSync } from "node:child_process";
 import { octokit } from "~/github/client";
 import { commitAndOpenPR } from "~/github/pull-requests";
