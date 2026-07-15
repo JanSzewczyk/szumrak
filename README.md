@@ -57,6 +57,7 @@ to be built from source inside a target repository's own CI, rather than publish
 - [✨ Features](#-features)
 - [🎯 Getting Started](#-getting-started)
 - [🚀 Usage](#-usage)
+- [🔀 Flows](#-flows)
 - [🔐 Environment Variables](#-environment-variables)
 - [🧪 Testing](#-testing)
 - [📁 Project Structure](#-project-structure)
@@ -154,6 +155,26 @@ are visible immediately via `git diff` in that repo. `DRY_RUN=true` is set by de
 Only once the logic works at Level 1 and Level 2 — driven by a `.github/workflows/szumrak.yml`
 in the **target** repository (not this one), which checks out both repos and builds the image
 from source. See `target-repo-templates/.github/workflows/szumrak.yml` for a reference copy.
+
+---
+
+## 🔀 Flows
+
+`MODE` selects which flow the agent runs (`src/flows/`; dispatched via `flowRegistry`,
+`src/flows/registry.ts`). Two flows exist today:
+
+- **`runner`** (`MODE=runner`, default) — runs `TASK` from scratch against a fresh checkout and,
+  on success, opens a new PR. Skips the run entirely if an open PR already exists for the same
+  task text (dedup).
+- **`review-followup`** (`MODE=review-followup`) — continues an *existing* PR instead of starting
+  over: checks out that PR's branch, re-runs the agent with the original task + current diff +
+  reviewer feedback, and pushes a follow-up commit to the same branch (no new PR). Capped at 3
+  automatic rounds per PR via a `review-round-N` label.
+
+```text
+MODE=runner              checkout main → run agent → commit → open new PR
+MODE=review-followup     checkout PR branch → run agent → commit → push to same PR
+```
 
 ---
 
