@@ -212,6 +212,10 @@ credentials — see below), `ANTHROPIC_API_KEY`, `DRY_RUN`, `AGENT_MODEL`, `MAX_
   flow means adding a value to `Mode` and a matching `flowRegistry` entry — the registry's
   `Record<Mode, ...>` typing turns a missed entry into a compile error instead of a silent runtime
   no-op.
+- **Commits in this repo follow [Conventional Commits](https://www.conventionalcommits.org/)**
+  (`feat:`/`fix:`/`chore:`/`refactor:`/`docs:`/`test:`, with an optional scope). This mirrors what
+  `agent/commit-metadata.ts` already enforces for commits the *agent* makes on target repos — keep
+  the same convention for commits made in this repo's own history.
 
 ## Docs & language
 

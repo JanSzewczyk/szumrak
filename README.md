@@ -38,10 +38,18 @@ to be built from source inside a target repository's own CI, rather than publish
 - **Bounded runs** — `MAX_TURNS` and `MAX_DURATION_MS` guards prevent a runaway agent loop
 - **`DRY_RUN` safety mode** — inspect changes left on disk before anything is ever committed, pushed, or opened as a PR
 
+### 🧩 Target Repo Integration
+
+- **Skill discovery** — the agent autonomously discovers and invokes the target repo's own `.claude/skills/`, choosing when to use them based on each `SKILL.md`'s name/description; no per-task mapping to configure
+- **The target repo's own hooks run** — `settings.json` PostToolUse hooks (formatters, linters, etc.) fire during the agent's session exactly as they would in an interactive Claude Code session; Szumrak registers no hooks of its own
+- **Opt-in `agent-config.json`** — the target repo declares its own tool permissions, skill whitelist, and post-run `verify` commands in one committed file; a missing file just means "no extra restriction, no skills, no verify"
+- **Hook lifecycle logging** — every hook the target repo runs is captured in `agent-run.jsonl` (name, event, stdout/stderr, exit code), so a formatter or linter that silently fails is visible instead of running unobserved in the SDK subprocess
+
 ### 🔒 Safety & Git Integration
 
 - **Command-injection-hardened git operations** — every git call goes through `execFileSync` with an argument array, never a shell-interpolated string, because the triggering task text is untrusted input
 - **Automatic PR creation** — commits, pushes a branch, opens a PR via the GitHub API ([Octokit](https://github.com/octokit/rest.js)), and labels it `ai-generated`
+- **Post-run verify gate** — before a PR opens, the target repo's declared `verify` commands (e.g. `npm run type-check`) are re-run as a final quality check; a failure blocks the PR instead of shipping broken code
 - **Structured JSONL run logs** — every tool call and result is recorded to `agent-run.jsonl`, ready to upload as a CI artifact
 
 ### 🧪 Quality & DX
@@ -58,6 +66,7 @@ to be built from source inside a target repository's own CI, rather than publish
 - [🎯 Getting Started](#-getting-started)
 - [🚀 Usage](#-usage)
 - [🔀 Flows](#-flows)
+- [🧩 Target Repo Configuration](#-target-repo-configuration)
 - [🔐 Environment Variables](#-environment-variables)
 - [🧪 Testing](#-testing)
 - [📁 Project Structure](#-project-structure)
@@ -178,6 +187,59 @@ MODE=review-followup     checkout PR branch → run agent → commit → push to
 
 ---
 
+## 🧩 Target Repo Configuration
+
+The target repository opts into agent-specific behavior via a single committed file:
+`.claude/agent-config.json` (see `target-repo-templates/.claude/agent-config.json` for a starter
+copy). All three fields are optional — a missing or invalid file just means "no extra
+restriction beyond the default permission mode, no skills, no verify"; it never throws.
+
+```jsonc
+{
+  "permissions": {
+    "allow": ["Read", "Edit", "Grep", "Glob", "Bash(npm run test:*)"],
+    "deny": ["Read(.env*)", "Edit(.env*)", "Bash(git push --force*)", "Bash(rm -rf*)"]
+  },
+  "skills": "all", // or a whitelist: ["clerk-nextjs-patterns", "clerk-setup"]
+  "verify": ["npm run type-check"] // re-run after the agent finishes, before a PR opens
+}
+```
+
+- **`permissions.allow` / `permissions.deny`** — map directly to the SDK's `allowedTools` /
+  `disallowedTools`.
+- **`skills`** — `"all"` or a name whitelist. Enables the SDK's `Skill` tool and lets the agent
+  autonomously invoke whatever it finds in the target repo's own `.claude/skills/`, choosing
+  based on each `SKILL.md`'s name/description — nothing to map per task. Skill *discovery* itself
+  is not driven by this field; it's the target repo's `.claude/` directory being loaded at all
+  (see below), which `skills` then filters.
+- **`verify`** — shell-free commands (`execFileSync`, whitespace-split — no pipes/quoting) re-run
+  once, after the agent's session ends, as the last gate before a PR is opened. A failure blocks
+  the PR; the changes stay uncommitted. This is deliberately the *only* quality gate Szumrak
+  itself runs — see below for why mid-session enforcement is left entirely to the target repo.
+
+### Skills and hooks both come from the target repo's own `.claude/`
+
+Szumrak loads the target repo's `.claude/settings.json` and `CLAUDE.md` during the agent's run
+(`settingSources: ['project']` in the SDK). This one setting is what makes skill discovery work
+at all — without it, every `Skill` call fails with `Unknown skill: ...` even when `skills: "all"`
+is set, since `skills` only *filters* discovered skills rather than discovering them itself.
+
+The same setting also means the target repo's own hooks (`settings.json`'s `PreToolUse` /
+`PostToolUse` / etc.) fire during the agent's session exactly as they would in an interactive
+Claude Code session — a `PostToolUse` hook running a formatter or linter after every `Edit`, for
+example. **Szumrak registers no hooks of its own.** Quality control *during* a run is entirely
+the target repo's own tooling; Szumrak's role is limited to the post-run `verify` gate above.
+Every hook's execution — name, event, stdout/stderr, exit code — is captured in `agent-run.jsonl`
+so a hook that silently fails (a script missing its executable bit, for instance) is visible
+instead of running unobserved in the SDK subprocess.
+
+> **Note:** committing a hook script from a Windows checkout can strip its executable bit
+> (`git ls-files -s` showing `100644` instead of `100755`), which makes it fail with
+> `Permission denied` (exit 126) the first time it runs on a Linux CI runner. Fix with
+> `git update-index --chmod=+x <script>` and commit.
+
+---
+
 ## 🔐 Environment Variables
 
 | Variable | Required | Description |
@@ -263,8 +325,10 @@ szumrak/
 │   │   ├── runner/                     # MODE=runner — run TASK from scratch and open a new PR
 │   │   └── review-followup/             # MODE=review-followup — continue an existing PR's branch
 │   ├── agent/                       # reusable Claude Agent SDK wrapper, used by every flow
-│   │   ├── run-agent.ts               # wraps the SDK query() stream
-│   │   └── commit-metadata.ts          # Conventional Commits type/scope/subject parsing
+│   │   ├── run-agent.ts               # wraps the SDK query() stream; hook/skill/CLAUDE.md loading lives here
+│   │   ├── agent-config.ts             # loads the target repo's .claude/agent-config.json
+│   │   ├── verify.ts                    # runs the target repo's `verify` commands (post-run gate)
+│   │   └── commit-metadata.ts            # Conventional Commits type/scope/subject parsing
 │   ├── github/                      # everything that touches git/GitHub, used by every flow
 │   │   ├── client.ts                  # Octokit client (GitHub App auth)
 │   │   ├── git-operations.ts           # git() CLI wrapper, checkout/diff/push
@@ -278,7 +342,8 @@ szumrak/
 │       └── summary.ts                   # GITHUB_STEP_SUMMARY writer
 ├── target-repo-templates/         # files meant to be copied INTO the target repo, not consumed here
 │   ├── CLAUDE.md
-│   └── .claude/settings.json
+│   ├── .claude/agent-config.json    # permissions / skills / verify — see Target Repo Configuration
+│   └── .github/workflows/szumrak.yml
 ├── biome.json
 ├── vitest.config.ts
 ├── tsconfig.json
@@ -296,8 +361,9 @@ szumrak/
 - **`src/agent/`** and **`src/github/`** — reusable building blocks every flow composes: the SDK
   wrapper and the git/GitHub integration, respectively
 - **`src/platform/`** — env validation, logging, and CI summaries; no flow-specific logic
-- **`target-repo-templates/`** — starter `CLAUDE.md` / `.claude/settings.json` for the *target*
-  repository the agent will operate on, not for this repo
+- **`target-repo-templates/`** — starter `CLAUDE.md` / `.claude/agent-config.json` /
+  `.github/workflows/szumrak.yml` for the *target* repository the agent will operate on, not for
+  this repo
 
 See [`CLAUDE.md`](./CLAUDE.md) for the full execution flow through these modules.
 
