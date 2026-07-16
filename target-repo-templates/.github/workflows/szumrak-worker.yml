@@ -101,7 +101,7 @@ jobs:
           if-no-files-found: ignore
 
   review-followup:
-    name: Szumrak Review Follow-up
+    name: Follow-up 🔍
     # Only follow up on PRs Szumrak itself opened, and only for feedback from
     # an actual person — not another bot/Action reacting to the PR. Also skips
     # a pull_request_review with no body: submitting a review with only inline
