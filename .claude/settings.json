@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          { "type": "command", "command": "bash .claude/hooks/typecheck.sh" },
+          { "type": "command", "command": "bash .claude/hooks/lint.sh" }
+        ]
+      }
+    ]
+  }
+}
