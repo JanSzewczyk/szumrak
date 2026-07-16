@@ -22,7 +22,12 @@ permissions:
 jobs:
   run-szumrak:
     name: Run Szumrak
-    if: github.event_name == 'workflow_dispatch'
+    # github.repository_owner, not a hardcoded username, so this template stays
+    # correct for whichever account/org owns the target repo it's copied into —
+    # every run costs real ANTHROPIC_API_KEY tokens, so a collaborator with
+    # write access (but not the repo owner) triggering workflow_dispatch is
+    # blocked before the job even starts, not just discouraged.
+    if: github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner
     runs-on: ubuntu-latest
     timeout-minutes: 20
     # Serializes runs against this repo — protects against two workflow_dispatch

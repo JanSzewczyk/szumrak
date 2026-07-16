@@ -171,6 +171,13 @@ single `question` input (no `task`, no mode-selection guard) and never commits, 
 a PR, so it's kept separate from `szumrak.yml`'s `runner`/`review-followup` jobs rather than
 sharing their `workflow_dispatch` inputs.
 
+Both `workflow_dispatch`-triggered jobs (`run-szumrak` in `szumrak.yml`, `run-szumrak-holmes` in
+`szumrak-holmes.yml`) are gated on `github.actor == github.repository_owner` — every run costs
+real `ANTHROPIC_API_KEY` tokens, so a collaborator with write access (but not the repo owner)
+triggering one of these workflows is blocked before the job even starts, not just discouraged.
+This is on top of GitHub's own requirement that triggering `workflow_dispatch` at all needs write
+access to the repo — the guard narrows that further to the owner specifically.
+
 ---
 
 ## 🔀 Flows
