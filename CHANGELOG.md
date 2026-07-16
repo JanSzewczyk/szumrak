@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.10.0](https://github.com/JanSzewczyk/szumrak/compare/v1.9.0...v1.10.0) (2026-07-16)
+
+### Features
+
+* **agent:** add ask mode for read-only Q&A against the target repo ([78c6755](https://github.com/JanSzewczyk/szumrak/commit/78c6755ec692197c7c19f6b5aaf20943f2e8c6df))
+
+### Documentation
+
+* update CLAUDE.md and README.md to clarify target repo configuration and commit message conventions ([5a9cb65](https://github.com/JanSzewczyk/szumrak/commit/5a9cb65be56a693a5bdd3fe7f4fd4a4cb010ea5e))
+
+### Build System
+
+* add project capabilities and constitution documentation ([77ab069](https://github.com/JanSzewczyk/szumrak/commit/77ab0692cc96f58cfbafa326d65f29381e34d1dd))
+
 ## [1.9.0](https://github.com/JanSzewczyk/szumrak/compare/v1.8.0...v1.9.0) (2026-07-16)
 
 ### Features
