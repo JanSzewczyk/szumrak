@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.11.0](https://github.com/JanSzewczyk/szumrak/compare/v1.10.1...v1.11.0) (2026-07-16)
+
+### Features
+
+* **workflows:** restrict workflow_dispatch triggering to the repo owner ([165aa0c](https://github.com/JanSzewczyk/szumrak/commit/165aa0ca17a336d72c4772fe029280ab2536c2e3))
+
 ## [1.10.1](https://github.com/JanSzewczyk/szumrak/compare/v1.10.0...v1.10.1) (2026-07-16)
 
 ### Bug Fixes
