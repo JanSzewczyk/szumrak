@@ -20,7 +20,7 @@ permissions:
   pull-requests: write
 
 jobs:
-  run-szumrak:
+  work:
     name: Work 🛠️
     # github.repository_owner, not a hardcoded username, so this template stays
     # correct for whichever account/org owns the target repo it's copied into —

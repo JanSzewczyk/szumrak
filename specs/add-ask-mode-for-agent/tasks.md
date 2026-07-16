@@ -203,7 +203,7 @@ target repo's reusable workflow template) — no new runtime logic beyond the di
     step, env/docker run -e stay TASK-only). See Story S4: MODE=ask gets its
     own dedicated workflow template (szumrak-holmes.yml) instead of sharing
     szumrak.yml's run-szumrak job.
-  files: [target-repo-templates/.github/workflows/szumrak.yml]
+  files: [target-repo-templates/.github/workflows/szumrak-worker.yml]
 ```
 
 ### Story S4: Dedicated "Szumrak Holmes" workflow for ask mode
@@ -214,7 +214,7 @@ reusable workflow template instead of a `task`/`question` guard step inside `szu
 
 ```yaml
 - id: T4.1
-  title: Revert szumrak.yml to its pre-feature (task-only) shape
+  title: Revert szumrak-worker.yml to its pre-feature (task-only) shape
   type: generic
   agent: orchestrator
   skills: []
@@ -226,7 +226,7 @@ reusable workflow template instead of a `task`/`question` guard step inside `szu
     mode-selection guard step, "Run Szumrak" step's env/docker run -e lists
     back to TASK-only (MODE/QUESTION removed). review-followup job
     untouched.
-  files: [target-repo-templates/.github/workflows/szumrak.yml]
+  files: [target-repo-templates/.github/workflows/szumrak-worker.yml]
 
 - id: T4.2
   title: Add target-repo-templates/.github/workflows/szumrak-holmes.yml
