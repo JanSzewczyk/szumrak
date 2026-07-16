@@ -9,6 +9,7 @@ import {
   type CommitMetadata,
   parseCommitMetadata
 } from "./commit-metadata";
+import { checkHookHealth } from "./hook-preflight";
 
 export interface AgentToolCall {
   name: string;
@@ -22,6 +23,7 @@ export interface AgentRunResult {
   totalCostUsd?: number;
   commitMetadata?: CommitMetadata;
   numTurns?: number;
+  loopDetected?: { toolName: string; input: Record<string, unknown>; occurrences: number };
 }
 
 export interface RunAgentOptions {
@@ -31,6 +33,8 @@ export interface RunAgentOptions {
 const READ_ONLY_ALLOWED_TOOLS = ["Read", "Grep", "Glob"];
 
 const HOOK_SUBTYPES = new Set(["hook_started", "hook_progress", "hook_response"]);
+
+const REPEATED_ACTION_LIMIT = 3;
 
 /**
  * The agent edits files through the SDK's built-in tools (Read/Edit/Grep/Glob).
@@ -43,6 +47,20 @@ const HOOK_SUBTYPES = new Set(["hook_started", "hook_progress", "hook_response"]
  * repo-owned config file can never widen tool access beyond Read/Grep/Glob.
  */
 export async function runAgent(task: string, options?: RunAgentOptions): Promise<AgentRunResult> {
+  const hookHealth = checkHookHealth(env.WORKSPACE_PATH);
+  if (hookHealth.total > 0 && hookHealth.failed.length === hookHealth.total) {
+    log("hook_preflight_all_failed", { failed: hookHealth.failed });
+    return {
+      toolCalls: [],
+      finalMessage:
+        "Every hook command in this repo's .claude/settings.json failed a syntax pre-flight check — aborting before the agent starts.",
+      succeeded: false
+    };
+  }
+  if (hookHealth.failed.length > 0) {
+    log("hook_preflight_warning", { failed: hookHealth.failed });
+  }
+
   const toolCalls: Array<AgentToolCall> = [];
   let finalMessage = "";
   let succeeded = false;
@@ -58,6 +76,10 @@ export async function runAgent(task: string, options?: RunAgentOptions): Promise
     maxDurationMs: env.MAX_DURATION_MS,
     nodeVersion: process.version
   });
+
+  let lastToolCallSignature: string | undefined;
+  let repeatedToolCallCount = 0;
+  let loopDetected: AgentRunResult["loopDetected"];
 
   const readOnly = options?.readOnly ?? false;
   const config = readOnly ? undefined : loadAgentConfig(env.WORKSPACE_PATH);
@@ -121,7 +143,7 @@ export async function runAgent(task: string, options?: RunAgentOptions): Promise
     }
   });
 
-  for await (const message of stream) {
+  messageLoop: for await (const message of stream) {
     if (message.type === "assistant") {
       const textBlocks: Array<string> = [];
       for (const block of message.message.content) {
@@ -129,6 +151,20 @@ export async function runAgent(task: string, options?: RunAgentOptions): Promise
           const toolCall = { name: block.name, input: block.input as Record<string, unknown> };
           toolCalls.push(toolCall);
           log("tool_call", toolCall);
+
+          const signature = `${toolCall.name}:${JSON.stringify(toolCall.input)}`;
+          if (signature === lastToolCallSignature) {
+            repeatedToolCallCount += 1;
+          } else {
+            lastToolCallSignature = signature;
+            repeatedToolCallCount = 1;
+          }
+
+          if (repeatedToolCallCount >= REPEATED_ACTION_LIMIT) {
+            loopDetected = { toolName: toolCall.name, input: toolCall.input, occurrences: repeatedToolCallCount };
+            log("repeated_action_loop_detected", loopDetected);
+            break messageLoop;
+          }
         }
         if (block.type === "text") {
           finalMessage = block.text;
@@ -202,6 +238,11 @@ export async function runAgent(task: string, options?: RunAgentOptions): Promise
     }
   }
 
+  if (loopDetected) {
+    succeeded = false;
+    finalMessage = `Agent appears stuck repeating the same "${loopDetected.toolName}" call with input ${JSON.stringify(loopDetected.input)} ${loopDetected.occurrences} times in a row and was stopped.`;
+  }
+
   const commitMetadata = parseCommitMetadata(finalMessage);
   /**
    * Strip the machine-readable block from the human-facing summary (DRY_RUN
@@ -211,5 +252,5 @@ export async function runAgent(task: string, options?: RunAgentOptions): Promise
 
   log("agent_end", { toolCallCount: toolCalls.length, succeeded, finalMessage: displayMessage, commitMetadata });
 
-  return { toolCalls, finalMessage: displayMessage, succeeded, totalCostUsd, commitMetadata, numTurns };
+  return { toolCalls, finalMessage: displayMessage, succeeded, totalCostUsd, commitMetadata, numTurns, loopDetected };
 }

@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { octokit } from "~/github/client";
-import { commitAndOpenPR } from "~/github/pull-requests";
+import { commitAndOpenPR, postPrComment } from "~/github/pull-requests";
 import { parseRepo } from "~/github/repo";
 import { commitMetadataBuilder } from "~/test/builders/commit-metadata.builder";
 import { pullsCreateResponseBuilder } from "~/test/builders/pulls-create-response.builder";
@@ -12,7 +12,7 @@ vi.mock("node:child_process", () => ({
 vi.mock("~/github/client", () => ({
   octokit: {
     pulls: { create: vi.fn() },
-    issues: { addLabels: vi.fn() }
+    issues: { addLabels: vi.fn(), createComment: vi.fn() }
   },
   getInstallationToken: vi.fn().mockResolvedValue("test-installation-token")
 }));
@@ -24,6 +24,7 @@ vi.mock("~/platform/logger", () => ({
 const mockedExecFileSync = vi.mocked(execFileSync);
 const mockedPullsCreate = vi.mocked(octokit.pulls.create);
 const mockedAddLabels = vi.mocked(octokit.issues.addLabels);
+const mockedCreateComment = vi.mocked(octokit.issues.createComment);
 
 describe("commitAndOpenPR", () => {
   beforeEach(() => {
@@ -227,6 +228,25 @@ describe("commitAndOpenPR", () => {
     );
     expect(mockedExecFileSync).not.toHaveBeenCalled();
     expect(mockedPullsCreate).not.toHaveBeenCalled();
+  });
+});
+
+describe("postPrComment", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  test("posts a comment via octokit.issues.createComment", async () => {
+    mockedCreateComment.mockResolvedValue({} as never);
+
+    await postPrComment("acme", "widgets", 42, "Stuck in a loop on Bash.");
+
+    expect(mockedCreateComment).toHaveBeenCalledWith({
+      owner: "acme",
+      repo: "widgets",
+      issue_number: 42,
+      body: "Stuck in a loop on Bash."
+    });
   });
 });
 

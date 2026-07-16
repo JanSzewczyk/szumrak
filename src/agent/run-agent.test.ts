@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { checkHookHealth } from "~/agent/hook-preflight";
 import { runAgent } from "~/agent/run-agent";
 import { log } from "~/platform/logger";
 
@@ -17,10 +18,15 @@ vi.mock("node:fs", () => ({
   readFileSync: vi.fn()
 }));
 
+vi.mock("~/agent/hook-preflight", () => ({
+  checkHookHealth: vi.fn()
+}));
+
 const mockedQuery = vi.mocked(query);
 const mockedExistsSync = vi.mocked(existsSync);
 const mockedReadFileSync = vi.mocked(readFileSync);
 const mockedLog = vi.mocked(log);
+const mockedCheckHookHealth = vi.mocked(checkHookHealth);
 
 const CONFIG_PATH = join("/workspace", ".claude", "agent-config.json");
 
@@ -68,6 +74,7 @@ describe("runAgent", () => {
     process.env.MAX_TURNS = "30";
     process.env.MAX_DURATION_MS = String(15 * 60 * 1000);
     mockedExistsSync.mockReturnValue(false);
+    mockedCheckHookHealth.mockReturnValue({ total: 0, failed: [] });
   });
 
   test("calls query with the task prompt and options derived from env", async () => {
@@ -353,6 +360,127 @@ describe("runAgent", () => {
    * above, which assert permissionMode: "acceptEdits" and config-derived allowedTools —
    * so no gap-filling test is added here for that case.)
    */
+  describe("repeated-action loop detection", () => {
+    test("stops and reports failure after 3 consecutive identical tool_use calls", async () => {
+      const repeatedToolUse = { type: "tool_use", name: "Bash", input: { command: "npm test" } };
+      mockedQuery.mockReturnValue(
+        streamOf([
+          assistantMessage([repeatedToolUse]),
+          assistantMessage([repeatedToolUse]),
+          assistantMessage([repeatedToolUse])
+        ]) as never
+      );
+
+      const result = await runAgent("task");
+
+      expect(result.succeeded).toBe(false);
+      expect(result.loopDetected).toEqual({
+        toolName: "Bash",
+        input: { command: "npm test" },
+        occurrences: 3
+      });
+      expect(result.finalMessage).toContain("Bash");
+    });
+
+    test("does not flag two identical repeats followed by a differing call", async () => {
+      const repeatedToolUse = { type: "tool_use", name: "Bash", input: { command: "npm test" } };
+      const differentToolUse = { type: "tool_use", name: "Read", input: { path: "a.ts" } };
+      mockedQuery.mockReturnValue(
+        streamOf([
+          assistantMessage([repeatedToolUse]),
+          assistantMessage([repeatedToolUse]),
+          assistantMessage([differentToolUse]),
+          resultMessage()
+        ]) as never
+      );
+
+      const result = await runAgent("task");
+
+      expect(result.loopDetected).toBeUndefined();
+      expect(result.succeeded).toBe(true);
+    });
+
+    test("stops consuming the stream as soon as the 3rd repeat is detected", async () => {
+      const repeatedToolUse = { type: "tool_use", name: "Bash", input: { command: "npm test" } };
+
+      async function* strictStream() {
+        yield assistantMessage([repeatedToolUse]) as never;
+        yield assistantMessage([repeatedToolUse]) as never;
+        yield assistantMessage([repeatedToolUse]) as never;
+        throw new Error("stream read past the 3rd repeat");
+      }
+      mockedQuery.mockReturnValue(strictStream() as never);
+
+      const result = await runAgent("task");
+
+      expect(result.loopDetected).toBeDefined();
+    });
+  });
+
+  describe("hook pre-flight check", () => {
+    test("aborts before calling query() when every hook fails the health check", async () => {
+      mockedCheckHookHealth.mockReturnValue({
+        total: 3,
+        failed: [
+          { event: "PostToolUse", command: "a" },
+          { event: "PostToolUse", command: "b" },
+          { event: "PreToolUse", command: "c" }
+        ]
+      });
+
+      const result = await runAgent("task");
+
+      expect(result.succeeded).toBe(false);
+      expect(mockedQuery).not.toHaveBeenCalled();
+    });
+
+    test("proceeds and logs a warning when only some hooks fail the health check", async () => {
+      mockedCheckHookHealth.mockReturnValue({
+        total: 3,
+        failed: [{ event: "PostToolUse", command: "b" }]
+      });
+      mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+
+      const result = await runAgent("task");
+
+      expect(mockedQuery).toHaveBeenCalled();
+      expect(result.succeeded).toBe(true);
+      expect(mockedLog).toHaveBeenCalledWith(
+        "hook_preflight_warning",
+        expect.objectContaining({ failed: [{ event: "PostToolUse", command: "b" }] })
+      );
+    });
+
+    test("proceeds silently when no hooks are configured", async () => {
+      mockedCheckHookHealth.mockReturnValue({ total: 0, failed: [] });
+      mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+
+      await runAgent("task");
+
+      expect(mockedQuery).toHaveBeenCalled();
+      expect(mockedLog).not.toHaveBeenCalledWith("hook_preflight_warning", expect.anything());
+    });
+
+    test("also runs the check for a readOnly call", async () => {
+      mockedCheckHookHealth.mockReturnValue({
+        total: 2,
+        failed: [
+          { event: "PostToolUse", command: "a" },
+          { event: "PostToolUse", command: "b" }
+        ]
+      });
+      const runAgentWithOptions = runAgent as unknown as (
+        task: string,
+        options?: { readOnly?: boolean }
+      ) => ReturnType<typeof runAgent>;
+
+      const result = await runAgentWithOptions("task", { readOnly: true });
+
+      expect(result.succeeded).toBe(false);
+      expect(mockedQuery).not.toHaveBeenCalled();
+    });
+  });
+
   describe("readOnly option", () => {
     /**
      * `RunAgentOptions`/the `readOnly` param don't exist on `runAgent`'s

@@ -221,7 +221,8 @@ restriction beyond the default permission mode, no skills, no verify"; it never 
     "deny": ["Read(.env*)", "Edit(.env*)", "Bash(git push --force*)", "Bash(rm -rf*)"]
   },
   "skills": "all", // or a whitelist: ["clerk-nextjs-patterns", "clerk-setup"]
-  "verify": ["npm run type-check"] // re-run after the agent finishes, before a PR opens
+  "verify": ["npm run type-check"], // re-run after the agent finishes, before a PR opens
+  "szumrakEngineVersion": "v1.11.0" // pin the Szumrak engine build to a release tag instead of main
 }
 ```
 
@@ -236,6 +237,14 @@ restriction beyond the default permission mode, no skills, no verify"; it never 
   once, after the agent's session ends, as the last gate before a PR is opened. A failure blocks
   the PR; the changes stay uncommitted. This is deliberately the *only* quality gate Szumrak
   itself runs — see below for why mid-session enforcement is left entirely to the target repo.
+- **`szumrakEngineVersion`** — pins which build of the Szumrak engine itself the target repo's
+  workflows (`szumrak-worker.yml`, `szumrak-holmes.yml`) run against. Must be a real GitHub release
+  tag of [`JanSzewczyk/szumrak`](https://github.com/JanSzewczyk/szumrak) (e.g. `v1.11.0`) — a
+  workflow step resolves it with `jq` before checking out the engine source, and the "Checkout
+  szumrak" step's `ref` is pinned to it. A nonexistent tag fails that checkout step clearly rather
+  than silently falling back. Omitting the field keeps today's default: the engine always builds
+  from `main`, so an unreviewed engine change can immediately affect this target repo's runs —
+  set this field once you want to control exactly when you pick up new Szumrak versions.
 
 ### Skills and hooks both come from the target repo's own `.claude/`
 
