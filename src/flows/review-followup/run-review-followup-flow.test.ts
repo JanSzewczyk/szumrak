@@ -4,6 +4,8 @@ import { runAgent } from "~/agent/run-agent";
 import { runReviewFollowUp } from "~/flows/review-followup/run-review-followup-flow";
 import { octokit } from "~/github/client";
 import { changedFilesWithContent, checkoutExistingBranch, pushFollowUpCommit } from "~/github/git-operations";
+import { postPrComment } from "~/github/pull-requests";
+import { writeStepSummary } from "~/platform/summary";
 import { agentRunResultBuilder } from "~/test/builders/agent-run-result.builder";
 import { commitMetadataBuilder } from "~/test/builders/commit-metadata.builder";
 import {
@@ -28,6 +30,10 @@ vi.mock("~/agent/run-agent", () => ({
   runAgent: vi.fn()
 }));
 
+vi.mock("~/github/pull-requests", () => ({
+  postPrComment: vi.fn()
+}));
+
 vi.mock("~/platform/logger", () => ({
   log: vi.fn()
 }));
@@ -44,6 +50,8 @@ const mockedCheckoutExistingBranch = vi.mocked(checkoutExistingBranch);
 const mockedChangedFilesWithContent = vi.mocked(changedFilesWithContent);
 const mockedPushFollowUpCommit = vi.mocked(pushFollowUpCommit);
 const mockedRunAgent = vi.mocked(runAgent);
+const mockedPostPrComment = vi.mocked(postPrComment);
+const mockedWriteStepSummary = vi.mocked(writeStepSummary);
 
 describe("runReviewFollowUp", () => {
   let originalTask: string;
@@ -66,6 +74,7 @@ describe("runReviewFollowUp", () => {
     mockedAddLabels.mockResolvedValue({} as never);
     mockedRemoveLabel.mockResolvedValue({} as never);
     mockedPullsUpdate.mockResolvedValue({} as never);
+    mockedPostPrComment.mockResolvedValue(undefined);
   });
 
   test("skips entirely once the PR already hit the round limit", async () => {
@@ -164,6 +173,62 @@ describe("runReviewFollowUp", () => {
     expect(result).toEqual({ succeeded: false });
     expect(mockedPushFollowUpCommit).not.toHaveBeenCalled();
     expect(mockedAddLabels).not.toHaveBeenCalled();
+  });
+
+  test("posts a PR comment naming the stuck tool when the agent run fails due to a detected loop", async () => {
+    mockedPullsGet.mockResolvedValue({ data: reviewFollowUpPullRequestBuilder.one() } as never);
+    mockedRunAgent.mockResolvedValue(
+      agentRunResultBuilder.one({
+        traits: "failed",
+        overrides: {
+          finalMessage: 'Agent appears stuck repeating the same "Bash" call and was stopped.',
+          loopDetected: { toolName: "Bash", input: { command: "npm test" }, occurrences: 3 }
+        }
+      })
+    );
+
+    const result = await runReviewFollowUp({
+      owner: "acme",
+      repo: "widgets",
+      prNumber: 42,
+      reviewFeedback: "feedback"
+    });
+
+    expect(result).toEqual({ succeeded: false });
+    expect(mockedPostPrComment).toHaveBeenCalledWith("acme", "widgets", 42, expect.stringContaining("Bash"));
+  });
+
+  test("still writes the step summary and returns failure when postPrComment itself rejects", async () => {
+    mockedPullsGet.mockResolvedValue({ data: reviewFollowUpPullRequestBuilder.one() } as never);
+    mockedRunAgent.mockResolvedValue(
+      agentRunResultBuilder.one({
+        traits: "failed",
+        overrides: {
+          finalMessage: 'Agent appears stuck repeating the same "Bash" call and was stopped.',
+          loopDetected: { toolName: "Bash", input: { command: "npm test" }, occurrences: 3 }
+        }
+      })
+    );
+    mockedPostPrComment.mockRejectedValue(new Error("GitHub API error"));
+
+    const result = await runReviewFollowUp({
+      owner: "acme",
+      repo: "widgets",
+      prNumber: 42,
+      reviewFeedback: "feedback"
+    });
+
+    expect(result).toEqual({ succeeded: false });
+    expect(mockedWriteStepSummary).toHaveBeenCalledWith(expect.stringContaining("did not complete successfully"));
+  });
+
+  test("does not post a PR comment on a plain failure without a detected loop", async () => {
+    mockedPullsGet.mockResolvedValue({ data: reviewFollowUpPullRequestBuilder.one() } as never);
+    mockedRunAgent.mockResolvedValue(agentRunResultBuilder.one({ traits: "failed" }));
+
+    await runReviewFollowUp({ owner: "acme", repo: "widgets", prNumber: 42, reviewFeedback: "feedback" });
+
+    expect(mockedPostPrComment).not.toHaveBeenCalled();
   });
 
   test("DRY_RUN skips pushing the commit and updating the round label", async () => {

@@ -2,6 +2,7 @@ import type { AgentRunResult } from "~/agent/run-agent";
 import { runAgent } from "~/agent/run-agent";
 import { octokit } from "~/github/client";
 import { changedFilesWithContent, checkoutExistingBranch, pushFollowUpCommit } from "~/github/git-operations";
+import { postPrComment } from "~/github/pull-requests";
 import { appendRunInfo, parseSzumrakMeta, type SzumrakMeta } from "~/github/run-info";
 import { env } from "~/platform/env";
 import { log } from "~/platform/logger";
@@ -91,6 +92,16 @@ export async function runReviewFollowUp({
     writeStepSummary(
       `Follow-up for PR #${prNumber} did not complete successfully: ${result.finalMessage.slice(0, 300)}`
     );
+    if (result.loopDetected) {
+      await postPrComment(
+        owner,
+        repo,
+        prNumber,
+        `Szumrak stopped this follow-up round after repeating the same "${result.loopDetected.toolName}" call ${result.loopDetected.occurrences} times in a row and appears stuck.`
+      ).catch((err) => {
+        log("post_pr_comment_failed", { prNumber, error: String(err) });
+      });
+    }
     return { succeeded: false };
   }
 

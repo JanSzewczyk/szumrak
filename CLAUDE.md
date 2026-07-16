@@ -212,6 +212,10 @@ credentials — see below), `ANTHROPIC_API_KEY`, `DRY_RUN`, `AGENT_MODEL`, `MAX_
   flow means adding a value to `Mode` and a matching `flowRegistry` entry — the registry's
   `Record<Mode, ...>` typing turns a missed entry into a compile error instead of a silent runtime
   no-op.
+- **`agent/hook-preflight.ts`'s dry-run check (`sh -n -c`) never executes hook commands, only
+  parses them.** This must never be changed to an actual execution, or it would reintroduce
+  exactly the risk it's meant to catch — running an untrusted/broken command for real before the
+  agent's session has even started.
 - **Commits in this repo follow [Conventional Commits](https://www.conventionalcommits.org/)**
   (`feat:`/`fix:`/`chore:`/`refactor:`/`docs:`/`test:`, with an optional scope). This mirrors what
   `agent/commit-metadata.ts` already enforces for commits the *agent* makes on target repos — keep

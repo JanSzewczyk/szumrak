@@ -54,3 +54,7 @@ export async function commitAndOpenPR(
   log("pr_created", { url: pr.data.html_url });
   return pr.data.html_url;
 }
+
+export async function postPrComment(owner: string, repo: string, prNumber: number, body: string): Promise<void> {
+  await octokit.issues.createComment({ owner, repo, issue_number: prNumber, body });
+}
