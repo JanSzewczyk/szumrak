@@ -38,6 +38,11 @@ const ReviewFollowUpModeEnv = z.object({
   REVIEW_FEEDBACK: z.string().min(1).describe("Reviewer's feedback text to address")
 });
 
+const AskModeEnv = z.object({
+  MODE: z.literal(Mode.ASK),
+  QUESTION: z.string().min(1).max(1000).describe("Question for the agent to answer about the target repository")
+});
+
 /**
  * z.discriminatedUnion requires an exact literal match on MODE — it can't
  * fall back to a `.default()` declared on a schema field the way a flat
@@ -72,9 +77,9 @@ export const env = createEnv({
       .optional()
       .describe("Natural-language task for the agent to perform; required when MODE=runner"),
     MODE: z
-      .enum([Mode.RUNNER, Mode.REVIEW_FOLLOWUP])
+      .enum([Mode.RUNNER, Mode.REVIEW_FOLLOWUP, Mode.ASK])
       .describe(
-        "runner: run TASK and open a new PR. review-followup: address review feedback on PR_NUMBER's existing branch instead."
+        "runner: run TASK and open a new PR. review-followup: address review feedback on PR_NUMBER's existing branch instead. ask: answer QUESTION read-only, no PR."
       ),
     PR_NUMBER: z.coerce
       .number()
@@ -87,6 +92,12 @@ export const env = createEnv({
       .min(1)
       .optional()
       .describe("Reviewer's feedback text to address; required when MODE=review-followup"),
+    QUESTION: z
+      .string()
+      .min(1)
+      .max(1000)
+      .optional()
+      .describe("Question for the agent to answer about the target repository; required when MODE=ask"),
     WORKSPACE_PATH: z
       .string()
       .min(1)
@@ -184,10 +195,10 @@ export const env = createEnv({
    * time, before the agent burns an API turn on a run that can't ever push.
    */
   createFinalSchema: (shape) => {
-    const { MODE, TASK, PR_NUMBER, REVIEW_FEEDBACK, ...common } = shape;
+    const { MODE, TASK, PR_NUMBER, REVIEW_FEEDBACK, QUESTION, ...common } = shape;
     return z
       .object(common)
-      .and(z.discriminatedUnion("MODE", [RunnerModeEnv, ReviewFollowUpModeEnv]))
+      .and(z.discriminatedUnion("MODE", [RunnerModeEnv, ReviewFollowUpModeEnv, AskModeEnv]))
       .superRefine((env, ctx) => {
         if (env.DRY_RUN) {
           return;

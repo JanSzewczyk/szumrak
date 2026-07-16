@@ -165,12 +165,18 @@ Only once the logic works at Level 1 and Level 2 — driven by a `.github/workfl
 in the **target** repository (not this one), which checks out both repos and builds the image
 from source. See `target-repo-templates/.github/workflows/szumrak.yml` for a reference copy.
 
+`MODE=ask` has its own dedicated, single-purpose workflow instead —
+`target-repo-templates/.github/workflows/szumrak-holmes.yml` ("Szumrak Holmes 🕵️"). It takes a
+single `question` input (no `task`, no mode-selection guard) and never commits, pushes, or opens
+a PR, so it's kept separate from `szumrak.yml`'s `runner`/`review-followup` jobs rather than
+sharing their `workflow_dispatch` inputs.
+
 ---
 
 ## 🔀 Flows
 
 `MODE` selects which flow the agent runs (`src/flows/`; dispatched via `flowRegistry`,
-`src/flows/registry.ts`). Two flows exist today:
+`src/flows/registry.ts`). Three flows exist today:
 
 - **`runner`** (`MODE=runner`, default) — runs `TASK` from scratch against a fresh checkout and,
   on success, opens a new PR. Skips the run entirely if an open PR already exists for the same
@@ -179,10 +185,17 @@ from source. See `target-repo-templates/.github/workflows/szumrak.yml` for a ref
   over: checks out that PR's branch, re-runs the agent with the original task + current diff +
   reviewer feedback, and pushes a follow-up commit to the same branch (no new PR). Capped at 3
   automatic rounds per PR via a `review-round-N` label.
+- **`ask`** (`MODE=ask`) — answers `QUESTION` about the target repository in a hard-enforced
+  read-only session (no file/git writes, regardless of the target repo's own
+  `.claude/agent-config.json` permissions) and writes the Markdown answer to
+  `GITHUB_STEP_SUMMARY`. Never commits, pushes, or opens a PR; independent of `runner`'s `verify`
+  gate. A question unrelated to the repository still succeeds — the agent declines explicitly
+  instead of answering off-topic.
 
 ```text
 MODE=runner              checkout main → run agent → commit → open new PR
 MODE=review-followup     checkout PR branch → run agent → commit → push to same PR
+MODE=ask                 run agent read-only → write answer to GITHUB_STEP_SUMMARY (no PR)
 ```
 
 ---
@@ -246,9 +259,10 @@ instead of running unobserved in the SDK subprocess.
 | --- | --- | --- |
 | `ANTHROPIC_API_KEY` | yes | Claude API key |
 | `TASK` | yes when `MODE=runner` | the task for the agent, in natural language |
-| `MODE` | no (default `runner`) | `runner` runs `TASK` and opens a new PR; `review-followup` addresses review feedback on `PR_NUMBER`'s existing branch instead |
+| `MODE` | no (default `runner`) | `runner` runs `TASK` and opens a new PR; `review-followup` addresses review feedback on `PR_NUMBER`'s existing branch instead; `ask` answers `QUESTION` read-only |
 | `PR_NUMBER` | yes when `MODE=review-followup` | PR number to follow up on |
 | `REVIEW_FEEDBACK` | yes when `MODE=review-followup` | reviewer's feedback text to address |
+| `QUESTION` | yes when `MODE=ask` | question for the agent to answer about the target repository, in natural language (max 1000 characters) |
 | `WORKSPACE_PATH` | no (default `/workspace`) | path to the target repository |
 | `REPO` | yes when opening a PR | `owner/repo` of the target repository |
 | `GH_APP_ID` | yes when opening a PR | GitHub App ID |
@@ -318,12 +332,13 @@ szumrak/
 ├── src/
 │   ├── index.ts                 # entrypoint — guards required env, dispatches to a flow by MODE
 │   ├── types/                     # types/enums shared across layers (flows AND platform need them)
-│   │   └── mode.ts                  # const Mode { RUNNER, REVIEW_FOLLOWUP } — single source of truth for MODE
+│   │   └── mode.ts                  # const Mode { RUNNER, REVIEW_FOLLOWUP, ASK } — single source of truth for MODE
 │   ├── flows/                     # one flow per orchestration path, each in its own folder
 │   │   ├── registry.ts               # Record<Mode, runner> — the only place index.ts dispatches through
 │   │   ├── types.ts                   # shared FlowResult contract
 │   │   ├── runner/                     # MODE=runner — run TASK from scratch and open a new PR
-│   │   └── review-followup/             # MODE=review-followup — continue an existing PR's branch
+│   │   ├── review-followup/             # MODE=review-followup — continue an existing PR's branch
+│   │   └── ask/                          # MODE=ask — answer QUESTION read-only, no PR
 │   ├── agent/                       # reusable Claude Agent SDK wrapper, used by every flow
 │   │   ├── run-agent.ts               # wraps the SDK query() stream; hook/skill/CLAUDE.md loading lives here
 │   │   ├── agent-config.ts             # loads the target repo's .claude/agent-config.json
@@ -343,7 +358,9 @@ szumrak/
 ├── target-repo-templates/         # files meant to be copied INTO the target repo, not consumed here
 │   ├── CLAUDE.md
 │   ├── .claude/agent-config.json    # permissions / skills / verify — see Target Repo Configuration
-│   └── .github/workflows/szumrak.yml
+│   └── .github/workflows/
+│       ├── szumrak.yml                # runner + review-followup jobs
+│       └── szumrak-holmes.yml          # MODE=ask only — single `question` input, no PR/commit
 ├── biome.json
 ├── vitest.config.ts
 ├── tsconfig.json

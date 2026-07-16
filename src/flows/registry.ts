@@ -1,4 +1,5 @@
 import { Mode } from "~/types/mode";
+import { type AskFlowInput, runAskFlow } from "./ask/run-ask-flow";
 import { type ReviewFollowUpFlowInput, runReviewFollowUp } from "./review-followup/run-review-followup-flow";
 import { type RunnerFlowInput, runRunnerFlow } from "./runner/run-runner-flow";
 import type { FlowResult } from "./types";
@@ -12,6 +13,7 @@ import type { FlowResult } from "./types";
 type FlowInputByMode = {
   [Mode.RUNNER]: RunnerFlowInput;
   [Mode.REVIEW_FOLLOWUP]: ReviewFollowUpFlowInput;
+  [Mode.ASK]: AskFlowInput;
 };
 
 /**
@@ -25,5 +27,6 @@ type FlowInputByMode = {
  */
 export const flowRegistry: { [M in Mode]: (input: FlowInputByMode[M]) => Promise<FlowResult> } = {
   [Mode.RUNNER]: runRunnerFlow,
-  [Mode.REVIEW_FOLLOWUP]: runReviewFollowUp
+  [Mode.REVIEW_FOLLOWUP]: runReviewFollowUp,
+  [Mode.ASK]: runAskFlow
 };
