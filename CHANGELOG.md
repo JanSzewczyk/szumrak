@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.10.1](https://github.com/JanSzewczyk/szumrak/compare/v1.10.0...v1.10.1) (2026-07-16)
+
+### Bug Fixes
+
+* **agent:** stop collapsing ask-mode answers behind a <details> accordion ([3e86912](https://github.com/JanSzewczyk/szumrak/commit/3e869124cfb34151f7683826222e310b5aa8c1c7))
+
 ## [1.10.0](https://github.com/JanSzewczyk/szumrak/compare/v1.9.0...v1.10.0) (2026-07-16)
 
 ### Features
