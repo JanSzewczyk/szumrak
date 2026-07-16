@@ -1,6 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
-import { type HookCallbackMatcher, query } from "@anthropic-ai/claude-agent-sdk";
+import { query } from "@anthropic-ai/claude-agent-sdk";
 import { env } from "~/platform/env";
 import { log } from "~/platform/logger";
 import { loadAgentConfig } from "./agent-config";
@@ -10,7 +8,6 @@ import {
   type CommitMetadata,
   parseCommitMetadata
 } from "./commit-metadata";
-import { runVerifyCommands } from "./verify";
 
 export interface AgentToolCall {
   name: string;
@@ -26,69 +23,7 @@ export interface AgentRunResult {
   numTurns?: number;
 }
 
-/**
- * How many times the Stop hook may push the agent back to work over failing
- * verify commands within a single run. Past the cap the session is allowed to
- * end (the runner flow's final gate still catches the unresolved failure) —
- * without a cap a failure the agent can't fix would burn turns until
- * MAX_TURNS/MAX_DURATION_MS.
- */
-const MAX_VERIFY_BLOCKS = 2;
-
-/**
- * Builds the programmatic Stop hook that runs the target repo's `verify`
- * commands whenever the agent tries to finish, feeding failures back so it
- * fixes them autonomously in the same session. In-process callbacks on
- * purpose: they carry none of the interactive-shell assumptions that make the
- * target repo's own settings.json hooks unsafe to run unattended (which is
- * why `settingSources: []` below excludes them).
- */
-function buildVerifyStopHook(verifyCommands: Array<string>): Partial<Record<"Stop", Array<HookCallbackMatcher>>> {
-  let blocks = 0;
-  return {
-    Stop: [
-      {
-        hooks: [
-          async function verifyOnStop() {
-            if (blocks >= MAX_VERIFY_BLOCKS) {
-              log("verify_cap_reached", { blocks });
-              return {};
-            }
-            const outcome = runVerifyCommands(verifyCommands, env.WORKSPACE_PATH);
-            if (outcome.passed) {
-              log("verify_passed", { commands: verifyCommands });
-              return {};
-            }
-            blocks += 1;
-            log("verify_failed", { round: blocks, report: outcome.report });
-            return {
-              decision: "block" as const,
-              reason: `The repository's verification commands failed after your changes. Fix the reported problems before finishing:\n\n${outcome.report}`
-            };
-          }
-        ]
-      }
-    ]
-  };
-}
-
-/**
- * Read manually because `settingSources` below excludes 'project', which is
- * what normally makes the SDK discover CLAUDE.md. See {@link runAgent} for
- * why.
- */
-function loadClaudeMd(workspacePath: string): string | undefined {
-  const claudeMdPath = join(workspacePath, "CLAUDE.md");
-  if (!existsSync(claudeMdPath)) {
-    return undefined;
-  }
-  try {
-    return readFileSync(claudeMdPath, "utf-8");
-  } catch (err) {
-    log("claude_md_unreadable", { claudeMdPath, error: String(err) });
-    return undefined;
-  }
-}
+const HOOK_SUBTYPES = new Set(["hook_started", "hook_progress", "hook_response"]);
 
 /**
  * The agent edits files through the SDK's built-in tools (Read/Edit/Grep/Glob).
@@ -114,8 +49,6 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
   });
 
   const config = loadAgentConfig(env.WORKSPACE_PATH);
-  const claudeMd = loadClaudeMd(env.WORKSPACE_PATH);
-  const verifyCommands = config.verify ?? [];
 
   const stream = query({
     prompt: task,
@@ -134,24 +67,33 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
        * repo doesn't opt in.
        */
       ...(config.skills !== undefined ? { skills: config.skills } : {}),
-      ...(verifyCommands.length > 0 ? { hooks: buildVerifyStopHook(verifyCommands) } : {}),
       /**
-       * Never load the target repo's .claude/settings.json or
-       * settings.local.json (the SDK default is to load everything it
-       * finds). Those files are written for interactive Claude Code
-       * sessions — hooks in particular tend to assume an interactive shell
-       * and can hard-loop or crash an unattended run (e.g. a PreToolUse
-       * hook using bash-only `[[ ]]` syntax fails under this image's
-       * /bin/sh and blocks every tool call). Tool restrictions for the
-       * agent come only from agent-config.json above. CLAUDE.md is
-       * loaded manually via systemPrompt.append instead, since 'project' is
-       * what would normally pull it in alongside the hooks we're excluding.
+       * 'project' — and only 'project': the target repo's committed
+       * .claude/ directory, never the machine-local 'user'/'local' tiers
+       * (a developer's personal settings must not steer an unattended CI
+       * run). This single value is what makes the SDK discover the target
+       * repo's `.claude/skills/` — without it `skills` above is inert, since
+       * it filters discovered skills rather than discovering them, and every
+       * Skill call fails with "Unknown skill". It also pulls in CLAUDE.md
+       * (hence no manual read here) and the repo's settings.json wholesale:
+       * its hooks (per-edit formatters/linters) and its MCP autostart flags.
+       * Quality control during the session is entirely the target repo's own
+       * hooks — Szumrak registers no hooks of its own; see `includeHookEvents`
+       * below for observing them.
        */
-      settingSources: [],
+      settingSources: ["project"],
+      /**
+       * Surfaces `hook_started`/`hook_progress`/`hook_response` system
+       * messages for the target repo's own settings.json hooks (PostToolUse
+       * formatters/linters, etc.) in the message stream below, so their
+       * execution is visible in agent-run.jsonl instead of running silently
+       * in the SDK subprocess.
+       */
+      includeHookEvents: true,
       systemPrompt: {
         type: "preset",
         preset: "claude_code",
-        append: claudeMd ? `${claudeMd}\n\n${COMMIT_METADATA_INSTRUCTIONS}` : COMMIT_METADATA_INSTRUCTIONS,
+        append: COMMIT_METADATA_INSTRUCTIONS,
         /**
          * Strips per-run dynamic sections (cwd, git status, auto-memory
          * path) out of the system prompt and re-injects them as the first
@@ -184,6 +126,27 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
       log("agent_message", { type: message.type, text: textBlocks.join("\n") || undefined });
     } else if (message.type === "user") {
       log("agent_message", { type: message.type, content: message.message.content });
+    } else if (message.type === "system" && "subtype" in message && HOOK_SUBTYPES.has(message.subtype)) {
+      const hookMessage = message as unknown as {
+        subtype: string;
+        hook_id: string;
+        hook_name: string;
+        hook_event: string;
+        stdout?: string;
+        stderr?: string;
+        exit_code?: number;
+        outcome?: string;
+      };
+      log("hook_event", {
+        subtype: hookMessage.subtype,
+        hookId: hookMessage.hook_id,
+        hookName: hookMessage.hook_name,
+        hookEvent: hookMessage.hook_event,
+        stdout: hookMessage.stdout,
+        stderr: hookMessage.stderr,
+        exitCode: hookMessage.exit_code,
+        outcome: hookMessage.outcome
+      });
     } else if (message.type === "system" && "subtype" in message && message.subtype === "init") {
       log("agent_init", {
         model: message.model,
@@ -192,6 +155,12 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
         permissionMode: message.permissionMode,
         cwd: message.cwd,
         toolCount: message.tools?.length,
+        /**
+         * Names, not just the count: without them a run where the agent never
+         * calls a skill is ambiguous — "Skill absent from the session" and
+         * "Skill available but the model chose not to use it" look identical.
+         */
+        tools: message.tools,
         mcpServers: message.mcp_servers,
         sessionId: message.session_id
       });

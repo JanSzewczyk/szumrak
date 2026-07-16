@@ -334,7 +334,7 @@ See [`CLAUDE.md`](./CLAUDE.md) for the full execution flow through these modules
 This is a private (`package.json#private: true`), single-maintainer project — it isn't set up
 to accept outside forks. If you're working in this repo:
 
-1. Follow the conventions in [`.claude/rules/code-style.md`](./.claude/rules/code-style.md) and [`CLAUDE.md`](./CLAUDE.md)
+1. Follow the conventions in [`.claude/rules/code-style.md`](../claude-plugins/plugins/shared-rules/skills/sync-rules/rules/code-style.md) and [`CLAUDE.md`](./CLAUDE.md)
 2. Before opening a PR, run `npm run typecheck`, `npm run biome:check`, and `npm test` locally — the same checks CI runs
 3. Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`/`fix:`/`chore:`)
 

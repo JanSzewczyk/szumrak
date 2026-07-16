@@ -2,14 +2,10 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { runAgent } from "~/agent/run-agent";
-import { runVerifyCommands } from "~/agent/verify";
+import { log } from "~/platform/logger";
 
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
   query: vi.fn()
-}));
-
-vi.mock("~/agent/verify", () => ({
-  runVerifyCommands: vi.fn()
 }));
 
 vi.mock("~/platform/logger", () => ({
@@ -24,7 +20,7 @@ vi.mock("node:fs", () => ({
 const mockedQuery = vi.mocked(query);
 const mockedExistsSync = vi.mocked(existsSync);
 const mockedReadFileSync = vi.mocked(readFileSync);
-const mockedRunVerifyCommands = vi.mocked(runVerifyCommands);
+const mockedLog = vi.mocked(log);
 
 const CONFIG_PATH = join("/workspace", ".claude", "agent-config.json");
 
@@ -86,11 +82,11 @@ describe("runAgent", () => {
         permissionMode: "acceptEdits",
         maxTurns: "30",
         /**
-         * Never load the target repo's settings.json/settings.local.json —
-         * see the comment in run-agent.ts on why hooks written for
-         * interactive sessions are unsafe to run unattended.
+         * 'project' only — the target repo's committed .claude/ tier, which
+         * is what makes the SDK discover its `.claude/skills/` (and load its
+         * CLAUDE.md + settings.json hooks). See the comment in run-agent.ts.
          */
-        settingSources: [],
+        settingSources: ["project"],
         systemPrompt: expect.objectContaining({ type: "preset", preset: "claude_code" })
       })
     });
@@ -261,58 +257,57 @@ describe("runAgent", () => {
     );
   });
 
-  describe("verify Stop hook", () => {
-    /** Runs the agent with verify commands configured and returns the registered Stop hook. */
-    async function stopHookFor(verify: Array<string>) {
-      configOnDisk(CONFIG_PATH, { verify });
-      mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
-      await runAgent("task");
-      const options = mockedQuery.mock.calls[0]?.[0]?.options as {
-        hooks?: { Stop?: Array<{ hooks: Array<() => Promise<Record<string, unknown>>> }> };
-      };
-      return options.hooks?.Stop?.[0]?.hooks[0];
-    }
+  test("never registers hooks of its own — quality control is entirely the target repo's settings.json", async () => {
+    configOnDisk(CONFIG_PATH, { verify: ["npm run lint"] });
+    mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
 
-    test("registers no hooks when the config has no verify commands", async () => {
-      mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+    await runAgent("task");
 
-      await runAgent("task");
+    expect(mockedQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.not.objectContaining({ hooks: expect.anything() })
+      })
+    );
+  });
 
-      expect(mockedQuery).toHaveBeenCalledWith(
-        expect.objectContaining({
-          options: expect.not.objectContaining({ hooks: expect.anything() })
-        })
-      );
-    });
+  test("sets includeHookEvents so the target repo's own hooks surface in the message stream", async () => {
+    mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
 
-    test("lets the agent stop when verification passes", async () => {
-      mockedRunVerifyCommands.mockReturnValue({ passed: true, report: "" });
-      const hook = await stopHookFor(["npm run lint"]);
+    await runAgent("task");
 
-      await expect(hook?.()).resolves.toEqual({});
-      expect(mockedRunVerifyCommands).toHaveBeenCalledWith(["npm run lint"], "/workspace");
-    });
+    expect(mockedQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: expect.objectContaining({ includeHookEvents: true })
+      })
+    );
+  });
 
-    test("blocks the stop with the failure report so the agent keeps fixing", async () => {
-      mockedRunVerifyCommands.mockReturnValue({ passed: false, report: "$ npm run lint\nerror X" });
-      const hook = await stopHookFor(["npm run lint"]);
+  test("logs the target repo's hook lifecycle messages with their name, event, and output", async () => {
+    const hookResponse = {
+      type: "system",
+      subtype: "hook_response",
+      hook_id: "hook-1",
+      hook_name: "format-prettier",
+      hook_event: "PostToolUse",
+      stdout: "formatted 1 file",
+      stderr: "",
+      exit_code: 0,
+      outcome: "success"
+    };
+    mockedQuery.mockReturnValue(streamOf([hookResponse, resultMessage()]) as never);
 
-      await expect(hook?.()).resolves.toEqual({
-        decision: "block",
-        reason: expect.stringContaining("$ npm run lint\nerror X")
-      });
-    });
+    await runAgent("task");
 
-    test("stops blocking after MAX_VERIFY_BLOCKS rounds even if verification still fails", async () => {
-      mockedRunVerifyCommands.mockReturnValue({ passed: false, report: "still broken" });
-      const hook = await stopHookFor(["npm run lint"]);
-
-      await expect(hook?.()).resolves.toMatchObject({ decision: "block" });
-      await expect(hook?.()).resolves.toMatchObject({ decision: "block" });
-      /** Third stop attempt is allowed through — the runner flow's final gate takes over. */
-      await expect(hook?.()).resolves.toEqual({});
-      expect(mockedRunVerifyCommands).toHaveBeenCalledTimes(2);
-    });
+    expect(mockedLog).toHaveBeenCalledWith(
+      "hook_event",
+      expect.objectContaining({
+        subtype: "hook_response",
+        hookName: "format-prettier",
+        hookEvent: "PostToolUse",
+        stdout: "formatted 1 file",
+        outcome: "success"
+      })
+    );
   });
 
   test("wires a trailing commit block into result.commitMetadata and strips it from finalMessage", async () => {

@@ -69,9 +69,8 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
 `src/index.ts` (entrypoint, reads env) branches on `MODE`:
 - **`Mode.RUNNER`** (`MODE=runner`, default) — `flows/runner/run-runner-flow.ts`:
   `runAgent(task)` → on success, a final verify gate (re-runs the target repo's `verify` commands
-  from agent-config.json via `agent/verify.ts`; a failure here means the in-session Stop hook gave
-  up — the flow fails without opening a PR, and a DRY_RUN reports failure too) → not `DRY_RUN`,
-  `commitAndOpenPR(...)`.
+  from agent-config.json via `agent/verify.ts` — the flow fails without opening a PR, and a
+  DRY_RUN reports failure too) → not `DRY_RUN`, `commitAndOpenPR(...)`.
 - **`Mode.REVIEW_FOLLOWUP`** (`MODE=review-followup`) — `flows/review-followup/run-review-followup-flow.ts`:
   `runReviewFollowUp(owner, repo, PR_NUMBER, REVIEW_FEEDBACK)`. Addresses code-review feedback on
   an *existing* PR's branch instead of opening a new one: reads the round count off a
@@ -90,7 +89,12 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   `maxTurns` from `env`. It walks the message stream: assistant tool-use/text blocks live under
   `message.message.content`; the final outcome is a `type: "result"` message where success is
   `subtype === "success" && !is_error` and the summary text is `message.result`. A wall-clock
-  guard throws past `maxDurationMs`.
+  guard throws past `maxDurationMs`. `includeHookEvents: true` surfaces the target repo's own
+  settings.json hooks (PostToolUse formatters/linters, etc. — see the `settingSources` invariant)
+  as `hook_started`/`hook_progress`/`hook_response` system messages; a dedicated branch logs each
+  as a `hook_event` (name, event, stdout/stderr, outcome) so their execution is visible in
+  `agent-run.jsonl` instead of running silently in the SDK subprocess. Szumrak registers no SDK
+  `hooks` of its own.
 - **`agent/agent-config.ts`** loads `<WORKSPACE_PATH>/.claude/agent-config.json`, the target
   repo's opt-in agent configuration (it replaced the earlier permissions-only
   `.claude/agent-permissions.json`, which is no longer read).
@@ -98,21 +102,19 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   `allowedTools`/`disallowedTools`; `skills` (`"all"` or a name whitelist) → the SDK `skills`
   option, exposing the target repo's `.claude/skills/` to the agent, which then invokes them
   autonomously off each SKILL.md's name/description; `verify` (e.g. `["npm run typecheck"]`) →
-  the quality-gate commands below. This file is intentionally **not** the target repo's own
-  `.claude/settings.json` — that one governs interactive Claude Code sessions (hooks, personal
-  permissions) for a human working in that repo, and doubling it as the unattended agent's
-  sandbox would leak agent restrictions into the human's session and vice versa. A missing or
-  invalid config file just means "no extra restriction beyond `acceptEdits`, no skills, no
-  verify" — it never throws.
+  the quality-gate commands below. This file is deliberately **separate from** the target repo's
+  own `.claude/settings.json`: agent-specific *permissions/skills/verify* are declared here, so
+  they don't leak into (or out of) a human's interactive session. `settings.json` is still loaded
+  (via `settingSources: ['project']`, for its hooks and skill discovery — see that invariant), but
+  it's not where the agent's tool restrictions come from. A missing or invalid config file just
+  means "no extra restriction beyond `acceptEdits`, no skills, no verify" — it never throws.
 - **`agent/verify.ts`** (`runVerifyCommands`) runs the config's `verify` commands in the
   workspace via `execFileSync` argument arrays (whitespace-split, no shell — so no pipes/quoting
   in `verify` entries; shell logic belongs in the target repo's package.json scripts) and
-  aggregates every failure into one report. Consumed twice: `run-agent.ts` registers a
-  **programmatic Stop hook** (in-process JS callback — carries none of the interactive-shell
-  assumptions that make target-repo settings.json hooks unsafe unattended) that blocks the agent
-  from finishing while verify fails, feeding the report back so it fixes issues in-session,
-  capped at `MAX_VERIFY_BLOCKS = 2` to avoid burning turns on unfixable failures; and the runner
-  flow's final gate (see above) catches whatever survived the cap.
+  aggregates every failure into one report. Consumed by the runner flow's final gate only (see
+  above) — a post-run check, not a mid-session hook: quality control *during* the agent's run is
+  entirely the target repo's own settings.json hooks (loaded via `settingSources: ['project']`),
+  not a Szumrak-side mechanism.
 - **`agent/commit-metadata.ts`** has the agent end its final response with a fenced ` ```commit `
   block (Conventional Commits type/scope/subject/branch), appended to `run-agent.ts`'s system
   prompt via `COMMIT_METADATA_INSTRUCTIONS`. `parseCommitMetadata()` extracts it (with a fallback
@@ -172,10 +174,24 @@ credentials — see below), `ANTHROPIC_API_KEY`, `DRY_RUN`, `AGENT_MODEL`, `MAX_
   is passed through verbatim from the target repo's `agent-config.json` (`"all"` or a name list)
   and omitted entirely when the repo doesn't opt in; skill content lives in the target repo's
   `.claude/skills/`, never in this repo. Don't add szumrak-side skill definitions or validation.
-- **Hooks come only from Szumrak's own in-process callbacks (the verify Stop hook in
-  `run-agent.ts`) — never from the target repo's settings.json.** `settingSources: []` stays:
-  filesystem hooks are written for interactive sessions and can hard-loop or crash an unattended
-  run. New agent-side automation belongs in programmatic `hooks` passed to `query()`.
+- **`settingSources: ['project']` — and only `'project'` — stays.** This one value is what makes
+  the SDK discover the target repo's `.claude/skills/`; without it the `skills` option is inert (it
+  filters discovered skills rather than discovering them, so every `Skill` call fails with "Unknown
+  skill" — verified live: `['project']` launches `clerk-nextjs-patterns`, `[]` returns
+  `Unknown skill`). `'project'` is not separable from that discovery: it also loads the repo's
+  CLAUDE.md (so `run-agent.ts` no longer reads it manually) **and** its `settings.json` wholesale —
+  the repo's hooks (per-edit formatters/linters) and MCP-autostart flags run under the agent. That
+  breadth is the accepted trade-off: the target repo owns those committed files and opts into them.
+  Never add `'user'`/`'local'` (a developer's machine-local settings must not steer an unattended CI
+  run).
+- **Szumrak registers no SDK `hooks` of its own — quality control during a run is entirely the
+  target repo's own settings.json hooks (loaded via `settingSources: ['project']` above).** There
+  used to be a programmatic Stop hook here that re-ran `verify` mid-session; it was removed by
+  design so the agent uses the project's own tooling instead of a parallel Szumrak-side mechanism.
+  `agent/verify.ts` still exists and is still run — but only once, as the runner flow's post-run
+  gate (see above), not as an SDK hook. `includeHookEvents: true` makes the target repo's hooks
+  observable in `agent-run.jsonl` (see `agent/run-agent.ts` above) since they'd otherwise run
+  silently in the SDK subprocess. Don't reintroduce a Szumrak-side `hooks` option on `query()`.
 - **`platform/logger.ts` redacts secret patterns and truncates long strings before anything is
   written.** `agent-run.jsonl` is uploaded as a CI artifact readable by anyone with repo/Actions
   access, so `sanitizeValue()` (regexes for `sk-ant-`, `AKIA`, `ghp_`/`github_pat_`, Google/Slack
