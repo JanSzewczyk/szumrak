@@ -12,7 +12,7 @@ leaves changes on disk only.
 The critical distinction to hold in mind: **this repo never operates on itself.** It is a tool
 that acts on some other repo. `src/` is the engine; `target-repo-templates/` are files meant to
 be copied *into the target repo* (its `CLAUDE.md`, `.claude/agent-config.json`,
-`.github/workflows/szumrak.yml`), not consumed here.
+`.github/workflows/szumrak-worker.yml`), not consumed here.
 
 Deployment model is "Option A" (see Notion): Szumrak stays a separate repo and is built locally
 from source (`docker build`) inside the target repo's CI, rather than published as an image.

@@ -1,12 +1,12 @@
 # Reference template — copy into the target repo's .github/workflows/szumrak-holmes.yml.
 # Adjust: the "Checkout target repo" step name, AGENT_MODEL, and timeout-minutes
-# to the target repo's own needs, same as szumrak.yml. "Checkout szumrak" always
+# to the target repo's own needs, same as szumrak-worker.yml. "Checkout szumrak" always
 # points at JanSzewczyk/szumrak — that's the engine, not the target repo.
 #
 # Single-purpose workflow dedicated to MODE=ask: a `question` in, a read-only
 # agent run, an answer in GITHUB_STEP_SUMMARY out — no `task` input, no
 # mode-selection guard, no PR/branch/commit anywhere in this workflow. Kept
-# separate from szumrak.yml (runner/review-followup) on purpose: those two
+# separate from szumrak-worker.yml (runner/review-followup) on purpose: those two
 # modes commit and push; this one never does, so it has nothing to serialize
 # behind and no reason to share a job with them.
 name: Szumrak Holmes 🕵️
@@ -32,7 +32,7 @@ jobs:
     if: github.actor == github.repository_owner
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    # Own group, separate from szumrak.yml's `szumrak-${{ github.repository }}` —
+    # Own group, separate from szumrak-worker.yml's `szumrak-${{ github.repository }}` —
     # an ask-mode run never commits/pushes, so it has nothing to race with a
     # runner/review-followup run over and no reason to queue behind one.
     concurrency:

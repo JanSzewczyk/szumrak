@@ -161,17 +161,17 @@ are visible immediately via `git diff` in that repo. `DRY_RUN=true` is set by de
 
 ### Level 3 — Full Cycle in GitHub Actions
 
-Only once the logic works at Level 1 and Level 2 — driven by a `.github/workflows/szumrak.yml`
+Only once the logic works at Level 1 and Level 2 — driven by a `.github/workflows/szumrak-worker.yml`
 in the **target** repository (not this one), which checks out both repos and builds the image
-from source. See `target-repo-templates/.github/workflows/szumrak.yml` for a reference copy.
+from source. See `target-repo-templates/.github/workflows/szumrak-worker.yml` for a reference copy.
 
 `MODE=ask` has its own dedicated, single-purpose workflow instead —
 `target-repo-templates/.github/workflows/szumrak-holmes.yml` ("Szumrak Holmes 🕵️"). It takes a
 single `question` input (no `task`, no mode-selection guard) and never commits, pushes, or opens
-a PR, so it's kept separate from `szumrak.yml`'s `runner`/`review-followup` jobs rather than
+a PR, so it's kept separate from `szumrak-worker.yml`'s `runner`/`review-followup` jobs rather than
 sharing their `workflow_dispatch` inputs.
 
-Both `workflow_dispatch`-triggered jobs (`run-szumrak` in `szumrak.yml`, `run-szumrak-holmes` in
+Both `workflow_dispatch`-triggered jobs (`run-szumrak` in `szumrak-worker.yml`, `run-szumrak-holmes` in
 `szumrak-holmes.yml`) are gated on `github.actor == github.repository_owner` — every run costs
 real `ANTHROPIC_API_KEY` tokens, so a collaborator with write access (but not the repo owner)
 triggering one of these workflows is blocked before the job even starts, not just discouraged.
@@ -366,7 +366,7 @@ szumrak/
 │   ├── CLAUDE.md
 │   ├── .claude/agent-config.json    # permissions / skills / verify — see Target Repo Configuration
 │   └── .github/workflows/
-│       ├── szumrak.yml                # runner + review-followup jobs
+│       ├── szumrak-worker.yml          # runner + review-followup jobs
 │       └── szumrak-holmes.yml          # MODE=ask only — single `question` input, no PR/commit
 ├── biome.json
 ├── vitest.config.ts
@@ -386,7 +386,7 @@ szumrak/
   wrapper and the git/GitHub integration, respectively
 - **`src/platform/`** — env validation, logging, and CI summaries; no flow-specific logic
 - **`target-repo-templates/`** — starter `CLAUDE.md` / `.claude/agent-config.json` /
-  `.github/workflows/szumrak.yml` for the *target* repository the agent will operate on, not for
+  `.github/workflows/szumrak-worker.yml` for the *target* repository the agent will operate on, not for
   this repo
 
 See [`CLAUDE.md`](./CLAUDE.md) for the full execution flow through these modules.

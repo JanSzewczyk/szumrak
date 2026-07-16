@@ -1,8 +1,8 @@
-# Reference template — copy into the target repo's .github/workflows/szumrak.yml.
+# Reference template — copy into the target repo's .github/workflows/szumrak-worker.yml.
 # Adjust: the "Checkout target repo" step name, AGENT_MODEL, and timeout-minutes
 # to the target repo's own needs. "Checkout szumrak" always points at
 # JanSzewczyk/szumrak — that's the engine, not the target repo.
-name: Szumrak 🤖
+name: Szumrak Worker 👷‍♂️
 
 on:
   workflow_dispatch:
@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   run-szumrak:
-    name: Run Szumrak
+    name: Work 🛠️
     # github.repository_owner, not a hardcoded username, so this template stays
     # correct for whichever account/org owns the target repo it's copied into —
     # every run costs real ANTHROPIC_API_KEY tokens, so a collaborator with
