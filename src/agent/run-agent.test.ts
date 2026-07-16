@@ -342,4 +342,86 @@ describe("runAgent", () => {
     expect(result.commitMetadata).toBeUndefined();
     expect(result.finalMessage).toBe("All done, no fenced block here.");
   });
+
+  /**
+   * S1 — `runAgent(task, { readOnly: true })`:
+   * 1. locks allowedTools to Read/Grep/Glob and permissionMode to "default".
+   * 2. does so even when the on-disk agent-config.json grants wider permissions —
+   *    the read-only branch must not merge/extend, and no disallowedTools key at all.
+   * (No options / options.readOnly falsy is already covered by the pre-existing
+   * "calls query with the task prompt..." and "passes permissions.allow/deny..." tests
+   * above, which assert permissionMode: "acceptEdits" and config-derived allowedTools —
+   * so no gap-filling test is added here for that case.)
+   */
+  describe("readOnly option", () => {
+    /**
+     * `RunAgentOptions`/the `readOnly` param don't exist on `runAgent`'s
+     * signature yet (this is the TDD red phase) — cast through a local type so
+     * these calls type-check today, and continue to type-check unchanged once
+     * `runAgent(task: string, options?: RunAgentOptions)` lands for real.
+     */
+    const runAgentWithOptions = runAgent as unknown as (
+      task: string,
+      options?: { readOnly?: boolean }
+    ) => ReturnType<typeof runAgent>;
+
+    test("restricts allowedTools to Read/Grep/Glob and permissionMode to default", async () => {
+      mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+
+      await runAgentWithOptions("task", { readOnly: true });
+
+      expect(mockedQuery).toHaveBeenCalledWith(
+        expect.objectContaining({
+          options: expect.objectContaining({
+            allowedTools: ["Read", "Grep", "Glob"],
+            permissionMode: "default"
+          })
+        })
+      );
+    });
+
+    test("ignores agent-config.json permissions.allow/deny entirely instead of merging them", async () => {
+      configOnDisk(CONFIG_PATH, { permissions: { allow: ["Edit", "Bash"], deny: ["Bash(rm -rf*)"] } });
+      mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+
+      await runAgentWithOptions("task", { readOnly: true });
+
+      expect(mockedQuery).toHaveBeenCalledWith(
+        expect.objectContaining({
+          options: expect.objectContaining({
+            allowedTools: ["Read", "Grep", "Glob"],
+            permissionMode: "default"
+          })
+        })
+      );
+      expect(mockedQuery).toHaveBeenCalledWith(
+        expect.objectContaining({
+          options: expect.not.objectContaining({ disallowedTools: expect.anything() })
+        })
+      );
+    });
+
+    test("appends the ask-mode decline/citation instructions instead of the commit-metadata block", async () => {
+      mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+
+      await runAgentWithOptions("task", { readOnly: true });
+
+      expect(mockedQuery).toHaveBeenCalledWith(
+        expect.objectContaining({
+          options: expect.objectContaining({
+            systemPrompt: expect.objectContaining({
+              append: expect.stringContaining("isn't related to this project")
+            })
+          })
+        })
+      );
+      expect(mockedQuery).toHaveBeenCalledWith(
+        expect.objectContaining({
+          options: expect.objectContaining({
+            systemPrompt: expect.not.objectContaining({ append: expect.stringContaining("```commit") })
+          })
+        })
+      );
+    });
+  });
 });

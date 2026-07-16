@@ -27,6 +27,7 @@ async function main() {
     hasTask: "TASK" in env,
     prNumber: "PR_NUMBER" in env ? env.PR_NUMBER : undefined,
     hasReviewFeedback: "REVIEW_FEEDBACK" in env,
+    hasQuestion: "QUESTION" in env,
     agentModel: env.AGENT_MODEL,
     maxTurns: env.MAX_TURNS,
     maxDurationMs: env.MAX_DURATION_MS,
@@ -57,6 +58,14 @@ async function main() {
 
     if (env.MODE === Mode.RUNNER) {
       const result = await flowRegistry[Mode.RUNNER]({ task: env.TASK });
+      if (!result.succeeded) {
+        process.exit(1);
+      }
+      return;
+    }
+
+    if (env.MODE === Mode.ASK) {
+      const result = await flowRegistry[Mode.ASK]({ question: env.QUESTION });
       if (!result.succeeded) {
         process.exit(1);
       }

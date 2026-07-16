@@ -2,6 +2,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import { env } from "~/platform/env";
 import { log } from "~/platform/logger";
 import { loadAgentConfig } from "./agent-config";
+import { ASK_MODE_INSTRUCTIONS } from "./ask-instructions";
 import {
   COMMIT_BLOCK_PATTERN,
   COMMIT_METADATA_INSTRUCTIONS,
@@ -23,6 +24,12 @@ export interface AgentRunResult {
   numTurns?: number;
 }
 
+export interface RunAgentOptions {
+  readOnly?: boolean;
+}
+
+const READ_ONLY_ALLOWED_TOOLS = ["Read", "Grep", "Glob"];
+
 const HOOK_SUBTYPES = new Set(["hook_started", "hook_progress", "hook_response"]);
 
 /**
@@ -30,8 +37,12 @@ const HOOK_SUBTYPES = new Set(["hook_started", "hook_progress", "hook_response"]
  * Commit/push/PR happens separately in github/ after the run finishes — the
  * agent never runs `git push`/`gh pr create` itself, so permissionMode
  * "acceptEdits" (auto-accept file edits) is enough without opening up Bash.
+ *
+ * `options.readOnly` is a Szumrak-enforced guarantee for ask mode: the target
+ * repo's agent-config.json permissions are ignored entirely (not merged) so a
+ * repo-owned config file can never widen tool access beyond Read/Grep/Glob.
  */
-export async function runAgent(task: string): Promise<AgentRunResult> {
+export async function runAgent(task: string, options?: RunAgentOptions): Promise<AgentRunResult> {
   const toolCalls: Array<AgentToolCall> = [];
   let finalMessage = "";
   let succeeded = false;
@@ -48,17 +59,18 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
     nodeVersion: process.version
   });
 
-  const config = loadAgentConfig(env.WORKSPACE_PATH);
+  const readOnly = options?.readOnly ?? false;
+  const config = readOnly ? undefined : loadAgentConfig(env.WORKSPACE_PATH);
 
   const stream = query({
     prompt: task,
     options: {
       cwd: env.WORKSPACE_PATH,
-      permissionMode: "acceptEdits",
+      permissionMode: readOnly ? "default" : "acceptEdits",
       maxTurns: env.MAX_TURNS,
       model: env.AGENT_MODEL,
-      allowedTools: config.permissions?.allow,
-      disallowedTools: config.permissions?.deny,
+      allowedTools: readOnly ? READ_ONLY_ALLOWED_TOOLS : config?.permissions?.allow,
+      disallowedTools: readOnly ? undefined : config?.permissions?.deny,
       /**
        * Skills whitelisted by the target repo's agent-config.json (`"all"` or
        * a name list). Discovery happens in the target repo's own
@@ -66,7 +78,7 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
        * each SKILL.md's name/description. Omitted entirely when the target
        * repo doesn't opt in.
        */
-      ...(config.skills !== undefined ? { skills: config.skills } : {}),
+      ...(config?.skills !== undefined ? { skills: config.skills } : {}),
       /**
        * 'project' — and only 'project': the target repo's committed
        * .claude/ directory, never the machine-local 'user'/'local' tiers
@@ -93,7 +105,7 @@ export async function runAgent(task: string): Promise<AgentRunResult> {
       systemPrompt: {
         type: "preset",
         preset: "claude_code",
-        append: COMMIT_METADATA_INSTRUCTIONS,
+        append: readOnly ? ASK_MODE_INSTRUCTIONS : COMMIT_METADATA_INSTRUCTIONS,
         /**
          * Strips per-run dynamic sections (cwd, git status, auto-memory
          * path) out of the system prompt and re-injects them as the first
