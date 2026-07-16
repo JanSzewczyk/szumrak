@@ -3,8 +3,8 @@
  *
  * 1. Success path — short answer → { succeeded: true }, writeStepSummary
  *    called with the answer text and "✅" icon. (FR6)
- * 2. Long-answer path — 15+ line answer → writeStepSummary called with a
- *    string wrapped in <details><summary>Answer</summary>...</details>. (FR6)
+ * 2. Long-answer path — 15+ line answer → writeStepSummary called with the
+ *    full answer, visible at a glance (not collapsed behind <details>). (FR6)
  * 3. Decline/off-topic path — agent succeeds with an off-topic decline
  *    message → runAskFlow still resolves { succeeded: true }, no special
  *    casing needed. (AC2)
@@ -62,18 +62,15 @@ describe("runAskFlow", () => {
     expect(mockedCommitAndOpenPR).not.toHaveBeenCalled();
   });
 
-  test("wraps a long answer in a collapsible <details> block", async () => {
+  test("writes a long answer in full, without collapsing it behind a <details> accordion", async () => {
     const longAnswer = Array.from({ length: 20 }, (_, i) => `Line ${i + 1} of the explanation.`).join("\n");
     mockedRunAgent.mockResolvedValue(agentRunResultBuilder.one({ overrides: { finalMessage: longAnswer } }));
 
     const result = await runAskFlow({ question: "Explain the whole architecture in detail." });
 
     expect(result).toEqual({ succeeded: true });
-    expect(mockedWriteStepSummary).toHaveBeenCalledWith(
-      expect.stringContaining("<details><summary>Answer</summary>"),
-      "✅"
-    );
-    expect(mockedWriteStepSummary).toHaveBeenCalledWith(expect.stringContaining("</details>"), "✅");
+    expect(mockedWriteStepSummary).toHaveBeenCalledWith(longAnswer, "✅");
+    expect(mockedWriteStepSummary).not.toHaveBeenCalledWith(expect.stringContaining("<details>"), expect.anything());
     expect(mockedCommitAndOpenPR).not.toHaveBeenCalled();
   });
 

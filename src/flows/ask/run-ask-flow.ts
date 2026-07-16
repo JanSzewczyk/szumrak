@@ -7,20 +7,6 @@ export interface AskFlowInput {
   question: string;
 }
 
-const INLINE_LINE_LIMIT = 8;
-
-/**
- * Wraps a long answer in a collapsible block so the step summary stays
- * scannable — GITHUB_STEP_SUMMARY renders raw HTML/Markdown, and
- * <details>/<summary> is the standard GH-flavored-markdown collapsible.
- */
-function formatAnswer(answer: string): string {
-  if (answer.split("\n").length <= INLINE_LINE_LIMIT) {
-    return answer;
-  }
-  return `<details><summary>Answer</summary>\n\n${answer}\n\n</details>`;
-}
-
 /**
  * The ask flow: given a question, run the agent read-only against
  * `WORKSPACE_PATH` and write the answer to GITHUB_STEP_SUMMARY. Never
@@ -36,6 +22,6 @@ export async function runAskFlow({ question }: AskFlowInput): Promise<FlowResult
     return { succeeded: false };
   }
 
-  writeStepSummary(formatAnswer(result.finalMessage), "✅");
+  writeStepSummary(result.finalMessage, "✅");
   return { succeeded: true };
 }

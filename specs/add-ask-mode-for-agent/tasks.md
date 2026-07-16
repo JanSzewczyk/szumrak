@@ -106,8 +106,8 @@ Adds `Mode.ASK`, the `QUESTION` env var, and the new `flows/ask/` flow itself, w
     Covers: (a) success path — runAgent resolves via agentRunResultBuilder,
     runAskFlow returns { succeeded: true } and writeStepSummary is called with
     the answer and a success icon; (b) long-answer path — an answer beyond a
-    handful of lines gets wrapped in a <details><summary>Answer</summary>...
-    block passed to writeStepSummary; (c) decline/off-topic path — agent
+    handful of lines is still passed to writeStepSummary in full, visible at a
+    glance, never wrapped in a collapsible <details> block; (c) decline/off-topic path — agent
     succeeds with an off-topic decline message, runAskFlow still returns
     { succeeded: true }; (d) failure path — agentRunResultBuilder.one({
     traits: "failed" }), runAskFlow returns { succeeded: false }, log(...) and
@@ -128,10 +128,10 @@ Adds `Mode.ASK`, the `QUESTION` env var, and the new `flows/ask/` flow itself, w
     flows/ask/run-ask-flow.ts exports AskFlowInput { question: string } and
     runAskFlow(input: AskFlowInput): Promise<FlowResult>. Calls
     runAgent(question, { readOnly: true }); on failure logs, calls
-    writeStepSummary(...), returns { succeeded: false }; on success formats
-    the answer as Markdown (wrapped in <details><summary>Answer</summary>...
-    </details> once it exceeds a handful of lines) and calls
-    writeStepSummary(formatted, "✅"), returning { succeeded: true }. No dedup
+    writeStepSummary(...), returns { succeeded: false }; on success writes
+    the full answer (no collapsible <details> wrapping — must be visible at a
+    glance, not hidden behind a click) via
+    writeStepSummary(result.finalMessage, "✅"), returning { succeeded: true }. No dedup
     check, no verify gate, no PR/branch/commit call anywhere in the file. All
     T2.3 tests pass; npm run typecheck passes.
   files: [src/flows/ask/run-ask-flow.ts]
