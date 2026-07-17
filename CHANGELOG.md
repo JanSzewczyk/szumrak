@@ -3,6 +3,21 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.12.0](https://github.com/JanSzewczyk/szumrak/compare/v1.11.0...v1.12.0) (2026-07-17)
+
+### Features
+
+* **agent:** stop stuck runs early, pin engine version, pre-flight hook health ([e5f4d2e](https://github.com/JanSzewczyk/szumrak/commit/e5f4d2e14ba0cd02f66ca78a5d0850addcac1a65))
+
+### Documentation
+
+* **workflow:** rename szumrak.yml template to szumrak-worker.yml ([307f22b](https://github.com/JanSzewczyk/szumrak/commit/307f22ba46a4a30e0b8246c06080d4b8f910ce5f))
+
+### Code Refactoring
+
+* **workflow:** rename job from run-szumrak to work in szumrak-worker.yml ([0b6242b](https://github.com/JanSzewczyk/szumrak/commit/0b6242b1205c696350d0091bd818fdf6d0299d16))
+* **workflow:** update job name for clarity in szumrak-worker.yml ([3eec0a5](https://github.com/JanSzewczyk/szumrak/commit/3eec0a509b1c13636152ff203a5524ec9250979e))
+
 ## [1.11.0](https://github.com/JanSzewczyk/szumrak/compare/v1.10.1...v1.11.0) (2026-07-16)
 
 ### Features
