@@ -178,6 +178,27 @@ triggering one of these workflows is blocked before the job even starts, not jus
 This is on top of GitHub's own requirement that triggering `workflow_dispatch` at all needs write
 access to the repo — the guard narrows that further to the owner specifically.
 
+**The two template files are thin callers, not the logic itself.** `szumrak-worker.yml` and
+`szumrak-holmes.yml` each `uses:` a reusable workflow (`workflow_call`) hosted in this repo —
+`_worker-run.yml`, `_worker-review-followup.yml`, `_holmes.yml` under
+[`.github/workflows/`](.github/workflows/) — which holds every shared step (checkout, engine-ref
+resolution, Docker build/run, log upload). The target repo's copy only declares its trigger,
+`if:` guard, and a handful of `with:` inputs (`task`/`question`/`agent_model`/`timeout_minutes`).
+This is what lets a fix or improvement to the shared logic reach every target repo without each
+one re-copying the template file by hand.
+
+Pin the `uses: JanSzewczyk/szumrak/.github/workflows/_*.yml@<ref>` line to whichever suits your
+risk tolerance:
+
+- **`@main`** (the templates' default) — logic-template changes apply automatically on the next
+  run, no action needed in the target repo.
+- **`@<release tag>`** (e.g. `@v1.13.0`) — pin to a specific release for predictable behavior;
+  bump deliberately by editing the `uses:` line, same tradeoff as staying on an older dependency
+  version.
+
+This is a separate axis from `szumrakEngineVersion` in `.claude/agent-config.json` (below), which
+pins the *Docker image* built inside the reusable workflow, not the workflow YAML that builds it.
+
 ---
 
 ## 🔀 Flows
@@ -375,8 +396,12 @@ szumrak/
 │   ├── CLAUDE.md
 │   ├── .claude/agent-config.json    # permissions / skills / verify — see Target Repo Configuration
 │   └── .github/workflows/
-│       ├── szumrak-worker.yml          # runner + review-followup jobs
-│       └── szumrak-holmes.yml          # MODE=ask only — single `question` input, no PR/commit
+│       ├── szumrak-worker.yml          # thin caller: triggers + `uses: _worker-run.yml` / `_worker-review-followup.yml`
+│       └── szumrak-holmes.yml          # thin caller: triggers + `uses: _holmes.yml`
+├── .github/workflows/
+│   ├── _worker-run.yml             # reusable workflow: the `work` job body (called from target repos)
+│   ├── _worker-review-followup.yml  # reusable workflow: the `review-followup` job body
+│   └── _holmes.yml                  # reusable workflow: the MODE=ask job body
 ├── biome.json
 ├── vitest.config.ts
 ├── tsconfig.json

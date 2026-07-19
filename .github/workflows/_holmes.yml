@@ -1,0 +1,126 @@
+# Reusable workflow — called via `uses:` from a target repo's own
+# .github/workflows/szumrak-holmes.yml (see target-repo-templates/). Holds the
+# read-only MODE=ask job body so target repos don't have to keep a full copy of
+# this logic in sync by hand; only the trigger/`if:`/`with:` lives in the target
+# repo's copy. Pin the caller's `uses: .../_holmes.yml@<ref>` to `main` for
+# automatic updates or to a release tag for deliberate bumps — see README.md.
+#
+# Single-purpose: a `question` in, a read-only agent run, an answer in
+# GITHUB_STEP_SUMMARY out — no PR/branch/commit anywhere in this workflow.
+name: Szumrak Holmes (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      question:
+        description: "Question for the agent to answer about this repository, read-only"
+        required: true
+        type: string
+      agent_model:
+        required: false
+        type: string
+        default: haiku
+      timeout_minutes:
+        required: false
+        type: number
+        default: 20
+    secrets:
+      ANTHROPIC_API_KEY:
+        required: true
+      GH_APP_ID:
+        required: true
+      GH_APP_PRIVATE_KEY:
+        required: true
+      GH_APP_INSTALLATION_ID:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  run-szumrak-holmes:
+    name: Run Szumrak Holmes
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    # Own group, separate from the worker workflows' `szumrak-${{ github.repository }}` —
+    # an ask-mode run never commits/pushes, so it has nothing to race with a
+    # runner/review-followup run over and no reason to queue behind one.
+    concurrency:
+      group: szumrak-holmes-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout target repo
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          path: workspace
+
+      # Resolves which Szumrak engine ref to build from the target repo's own
+      # .claude/agent-config.json (szumrakEngineVersion field — a real
+      # JanSzewczyk/szumrak release tag). Falls back to "main" when the file,
+      # field, or jq itself is missing/fails — never fails the job over this.
+      - name: Resolve Szumrak engine ref
+        run: |
+          REF="main"
+          RESOLVED=$(jq -r '.szumrakEngineVersion // empty' workspace/.claude/agent-config.json 2>/dev/null || true)
+          if [[ "$RESOLVED" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+            REF="$RESOLVED"
+          fi
+          echo "SZUMRAK_REF=$REF" >> "$GITHUB_ENV"
+
+      # Pre-install the target repo's deps into the mounted workspace so the
+      # agent can run the repo's test/type-check scripts to self-verify, instead
+      # of burning turns trying to `npm install` inside the container (the
+      # mounted /workspace has no node_modules otherwise). Set node-version to
+      # match the szumrak image (node:24-slim) so node_modules are ABI-compatible
+      # with the node that runs the tests inside the container. Best-effort
+      # (continue-on-error) so a non-npm target repo or an install hiccup never
+      # blocks the answer — the agent just falls back to not self-verifying.
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: workspace/package-lock.json
+
+      - name: Install target repo dependencies
+        working-directory: workspace
+        continue-on-error: true
+        run: npm ci
+
+      - name: Checkout szumrak
+        uses: actions/checkout@v7
+        with:
+          repository: JanSzewczyk/szumrak
+          ref: ${{ env.SZUMRAK_REF }}
+          path: szumrak-src
+
+      - name: Build Szumrak image
+        run: docker build -t szumrak -f szumrak-src/docker/Dockerfile szumrak-src
+
+      - name: Run Szumrak Holmes
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_APP_ID: ${{ secrets.GH_APP_ID }}
+          GH_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          GH_APP_INSTALLATION_ID: ${{ secrets.GH_APP_INSTALLATION_ID }}
+          MODE: ask
+          QUESTION: ${{ inputs.question }}
+          REPO: ${{ github.repository }}
+          AGENT_MODEL: ${{ inputs.agent_model }}
+        run: |
+          docker run --rm \
+            -e ANTHROPIC_API_KEY -e GH_APP_ID -e GH_APP_PRIVATE_KEY -e GH_APP_INSTALLATION_ID \
+            -e MODE -e QUESTION -e REPO -e AGENT_MODEL \
+            -e GITHUB_STEP_SUMMARY \
+            -v ${{ github.workspace }}/workspace:/workspace \
+            -v "$GITHUB_STEP_SUMMARY:$GITHUB_STEP_SUMMARY" \
+            szumrak
+
+      - name: Upload Szumrak log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: szumrak-holmes-log
+          path: ${{ github.workspace }}/workspace/agent-run.jsonl
+          if-no-files-found: ignore
