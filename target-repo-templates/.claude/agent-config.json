@@ -11,5 +11,6 @@
     ]
   },
   "skills": "all",
-  "verify": ["npm run typecheck", "npm run lint"]
+  "verify": ["npm run typecheck", "npm run lint"],
+  "szumrakEngineVersion": "main"
 }
