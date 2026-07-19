@@ -1,6 +1,7 @@
 import { query } from "@anthropic-ai/claude-agent-sdk";
 import { env } from "~/platform/env";
 import { log } from "~/platform/logger";
+import { SZUMRAK_VERSION } from "~/platform/version";
 import { loadAgentConfig } from "./agent-config";
 import { ASK_MODE_INSTRUCTIONS } from "./ask-instructions";
 import {
@@ -68,10 +69,17 @@ export async function runAgent(task: string, options?: RunAgentOptions): Promise
   let numTurns: number | undefined;
   const startedAt = Date.now();
 
+  const readOnly = options?.readOnly ?? false;
+
   log("agent_start", {
+    szumrakVersion: SZUMRAK_VERSION,
+    mode: env.MODE,
+    readOnly,
+    dryRun: env.DRY_RUN,
+    repo: env.REPO,
     task,
     workspacePath: env.WORKSPACE_PATH,
-    requestedModel: env.AGENT_MODEL ?? "default",
+    requestedModel: env.AGENT_MODEL,
     maxTurns: env.MAX_TURNS,
     maxDurationMs: env.MAX_DURATION_MS,
     nodeVersion: process.version
@@ -81,7 +89,6 @@ export async function runAgent(task: string, options?: RunAgentOptions): Promise
   let repeatedToolCallCount = 0;
   let loopDetected: AgentRunResult["loopDetected"];
 
-  const readOnly = options?.readOnly ?? false;
   const config = readOnly ? undefined : loadAgentConfig(env.WORKSPACE_PATH);
 
   const stream = query({
