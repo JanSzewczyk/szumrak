@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.12.1](https://github.com/JanSzewczyk/szumrak/compare/v1.12.0...v1.12.1) (2026-07-19)
+
+### Bug Fixes
+
+* **version:** add SZUMRAK_VERSION export and corresponding tests ([b152b2e](https://github.com/JanSzewczyk/szumrak/commit/b152b2e0e40ffddecf228ede86cd17948cd6167a))
+
 ## [1.12.0](https://github.com/JanSzewczyk/szumrak/compare/v1.11.0...v1.12.0) (2026-07-17)
 
 ### Features
