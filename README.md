@@ -67,6 +67,7 @@ to be built from source inside a target repository's own CI, rather than publish
 - [🚀 Usage](#-usage)
 - [🔀 Flows](#-flows)
 - [🧩 Target Repo Configuration](#-target-repo-configuration)
+- [📘 Target Repo Integration Guide](#-target-repo-integration-guide)
 - [🔐 Environment Variables](#-environment-variables)
 - [🧪 Testing](#-testing)
 - [📁 Project Structure](#-project-structure)
@@ -290,7 +291,24 @@ instead of running unobserved in the SDK subprocess.
 
 ---
 
+## 📘 Target Repo Integration Guide
+
+The steps above assume a GitHub App, its secrets, and the copied template files already
+exist. For a complete, from-zero walkthrough — creating the GitHub App with the right
+permissions (including the `workflows` permission that's easy to miss), installing it,
+naming every required secret, copying and customizing the template files, checking hook
+executable bits, and a troubleshooting section for the errors you're most likely to hit —
+see **[`docs/target-repo-integration.md`](./docs/target-repo-integration.md)**.
+
+---
+
 ## 🔐 Environment Variables
+
+> Local development only (`npm start` / `npm run dev:run`, Levels 1–2 above). For the
+> GitHub Actions secrets a target repo needs to run Szumrak in CI (Level 3), see
+> [`docs/target-repo-integration.md`](./docs/target-repo-integration.md#pełna-tabela-zmiennych-środowiskowych--sekretów)
+> — the secret names are the same, but that doc also covers GitHub App setup and the
+> reusable workflow's `with:` inputs.
 
 | Variable | Required | Description |
 | --- | --- | --- |
@@ -364,6 +382,8 @@ szumrak/
 │   └── dependabot.yml
 ├── .claude/
 │   └── rules/                 # synced code-style conventions (function keyword, no arrow-fn declarations)
+├── docs/
+│   └── target-repo-integration.md  # full step-by-step: GitHub App, secrets, templates, troubleshooting
 ├── docker/
 │   └── Dockerfile              # tsx entrypoint — no compile step, no dist/
 ├── src/
