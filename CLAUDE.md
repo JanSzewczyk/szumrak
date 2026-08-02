@@ -7,12 +7,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Szumrak is the **engine** of an autonomous agent. It runs the Claude Agent SDK against a
 **separate target repository** (mounted at `WORKSPACE_PATH`, default `/workspace`), lets the
 model make edits, then commits/pushes and opens a labelled PR — unless `DRY_RUN=true`, which
-leaves changes on disk only.
+leaves changes on disk only. A third, read-only mode (`MODE=ask`) answers a question about the
+target repository instead, with no commit/push/PR anywhere in that path — see `Mode.ASK` below.
 
 The critical distinction to hold in mind: **this repo never operates on itself.** It is a tool
 that acts on some other repo. `src/` is the engine; `target-repo-templates/` are files meant to
 be copied *into the target repo* (its `CLAUDE.md`, `.claude/agent-config.json`,
-`.github/workflows/szumrak-worker.yml`), not consumed here.
+`.github/workflows/szumrak-worker.yml`, `.github/workflows/szumrak-holmes.yml`), not consumed
+here. Each template workflow is a thin trigger wrapper around a same-named reusable workflow
+hosted in this repo's own `.github/workflows/_worker-run.yml` /
+`_worker-review-followup.yml` / `_holmes.yml` — the target repo's copy only wires up the
+`if:`/`with:` trigger and pins a `uses: JanSzewczyk/szumrak/.github/workflows/_*.yml@<ref>`
+version; the actual job body (checkout, engine-ref resolution, Docker build/run, log upload)
+lives here and updates for every target repo automatically when pinned to `@main`.
 
 Deployment model is "Option A" (see Notion): Szumrak stays a separate repo and is built locally
 from source (`docker build`) inside the target repo's CI, rather than published as an image.
@@ -84,6 +91,22 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   that branch (no new branch, no new PR — GitHub updates the existing PR when a commit lands on its
   branch) and bumps the round label. `TASK` is not required in this mode; `PR_NUMBER` +
   `REVIEW_FEEDBACK` are, instead.
+- **`Mode.ASK`** (`MODE=ask`) — `flows/ask/run-ask-flow.ts`: `runAgent(question, { readOnly: true
+  })` → on success, `writeStepSummary(result.finalMessage, "✅")`; on failure, logs
+  `agent_run_failed` and writes a truncated failure summary. Never calls `commitAndOpenPR` or
+  touches `github/` at all — the whole flow is `agent/run-agent.ts` + `platform/logger.ts` +
+  `platform/summary.ts`, independent of the runner flow's verify/PR gate. `TASK` is not required
+  in this mode; `QUESTION` (max 1000 chars) is, instead. `readOnly: true` makes `run-agent.ts`
+  force `permissionMode: "default"` (not `acceptEdits`), restrict tools to
+  `READ_ONLY_ALLOWED_TOOLS` (Read/Grep/Glob — no Bash, no edits), skip loading the target repo's
+  `agent-config.json` permissions/verify entirely, and append `agent/ask-instructions.ts`'s
+  `ASK_MODE_INSTRUCTIONS` to the system prompt instead of `COMMIT_METADATA_INSTRUCTIONS` (there is
+  nothing to commit in a read-only session). Those instructions also encode the answer contract at
+  the prompt level — decline plainly if the question isn't about this repo, cite every claim as
+  `file_path:line_number`, quote exact code verbatim rather than reconstructing it from memory —
+  since none of that is something Szumrak's own code can enforce deterministically. In CI this mode
+  is invoked only through the separate `szumrak-holmes.yml` template / `_holmes.yml` reusable
+  workflow (see above), never through `szumrak-worker.yml`.
 
 - **`agent/run-agent.ts`** wraps the SDK `query()` stream. `permissionMode: "acceptEdits"`,
   `maxTurns` from `env`. It walks the message stream: assistant tool-use/text blocks live under
@@ -152,8 +175,9 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   `workflow_dispatch`-only trigger). Success stays a silent `ai-generated` PR + label.
 
 Config is entirely env-var driven and validated in `platform/env.ts`: `TASK` (required only for
-`MODE=runner`), `MODE` (`runner` default | `review-followup`, backed by `types/mode.ts`'s `Mode`
-enum), `PR_NUMBER`/`REVIEW_FEEDBACK` (required only for `MODE=review-followup`), `WORKSPACE_PATH`,
+`MODE=runner`), `MODE` (`runner` default | `review-followup` | `ask`, backed by `types/mode.ts`'s
+`Mode` enum), `PR_NUMBER`/`REVIEW_FEEDBACK` (required only for `MODE=review-followup`),
+`QUESTION` (required only for `MODE=ask`, max 1000 chars), `WORKSPACE_PATH`,
 `REPO` (`owner/repo`), `GH_APP_ID`/`GH_APP_PRIVATE_KEY`/`GH_APP_INSTALLATION_ID` (GitHub App
 credentials — see below), `ANTHROPIC_API_KEY`, `DRY_RUN`, `AGENT_MODEL`, `MAX_TURNS`,
 `MAX_DURATION_MS`, `AGENT_LOG_PATH`, `TARGET_REPO_PATH` (local-only, used by `dev:run`),
