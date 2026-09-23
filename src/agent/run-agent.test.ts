@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { query } from "@anthropic-ai/claude-agent-sdk";
+import { AgentAuthMethod } from "~/agent/agent-auth";
 import { checkHookHealth } from "~/agent/hook-preflight";
 import { runAgent } from "~/agent/run-agent";
 import { log } from "~/platform/logger";
@@ -112,7 +113,10 @@ describe("runAgent", () => {
     const options = mockedQuery.mock.calls[0]?.[0].options;
     expect(options?.env?.CLAUDE_CODE_OAUTH_TOKEN).toBe("sk-ant-oat01-test-token");
     expect(options?.env).not.toHaveProperty("ANTHROPIC_API_KEY");
-    expect(mockedLog).toHaveBeenCalledWith("agent_start", expect.objectContaining({ authMethod: "oauth-token" }));
+    expect(mockedLog).toHaveBeenCalledWith(
+      "agent_start",
+      expect.objectContaining({ authMethod: AgentAuthMethod.OAUTH_TOKEN })
+    );
   });
 
   test("sets excludeDynamicSections so the static system-prompt prefix stays cross-run cacheable", async () => {
