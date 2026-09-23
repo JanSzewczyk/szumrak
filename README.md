@@ -68,6 +68,7 @@ to be built from source inside a target repository's own CI, rather than publish
 - [🔀 Flows](#-flows)
 - [🧩 Target Repo Configuration](#-target-repo-configuration)
 - [📘 Target Repo Integration Guide](#-target-repo-integration-guide)
+- [🔑 Authentication](#-authentication)
 - [🔐 Environment Variables](#-environment-variables)
 - [🧪 Testing](#-testing)
 - [📁 Project Structure](#-project-structure)
@@ -111,7 +112,7 @@ npm ci
 cp .env.example .env
 ```
 
-Fill in `ANTHROPIC_API_KEY` and `TASK` at minimum. See [Environment Variables](#-environment-variables)
+Fill in one credential (`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` — see [Authentication](#-authentication)) and `TASK` at minimum. See [Environment Variables](#-environment-variables)
 for the full list.
 
 #### 4. Run the Agent
@@ -138,9 +139,12 @@ TypeScript source directly with `tsx` — no build step.
 WORKSPACE_PATH=/path/to/local/target-repo \
 TASK="Add a unit test for the formatDate helper" \
 DRY_RUN=true \
-ANTHROPIC_API_KEY=sk-ant-... \
+CLAUDE_CODE_OAUTH_TOKEN=sk-ant-oat01-... \
 npm start
 ```
+
+Use `ANTHROPIC_API_KEY=sk-ant-...` instead of the OAuth token to bill the API — see
+[Authentication](#-authentication).
 
 ### Level 2 — In a Locally Built Container
 
@@ -174,7 +178,7 @@ sharing their `workflow_dispatch` inputs.
 
 Both `workflow_dispatch`-triggered jobs (`run-szumrak` in `szumrak-worker.yml`, `run-szumrak-holmes` in
 `szumrak-holmes.yml`) are gated on `github.actor == github.repository_owner` — every run costs
-real `ANTHROPIC_API_KEY` tokens, so a collaborator with write access (but not the repo owner)
+real Claude usage (API billing or subscription quota), so a collaborator with write access (but not the repo owner)
 triggering one of these workflows is blocked before the job even starts, not just discouraged.
 This is on top of GitHub's own requirement that triggering `workflow_dispatch` at all needs write
 access to the repo — the guard narrows that further to the owner specifically.
@@ -302,6 +306,24 @@ see **[`docs/target-repo-integration.md`](./docs/target-repo-integration.md)**.
 
 ---
 
+## 🔑 Authentication
+
+Szumrak authenticates the agent with **exactly one** of two credentials:
+
+- **`CLAUDE_CODE_OAUTH_TOKEN`** — a Claude subscription (Pro/Max) token. Generate it once with
+  `claude setup-token` (browser login, prints a long-lived `sk-ant-oat01-...` token).
+- **`ANTHROPIC_API_KEY`** — a pay-as-you-go API key from [console.anthropic.com](https://console.anthropic.com/).
+
+At least one must be set (startup fails fast otherwise). When both are set, the OAuth token wins and
+`ANTHROPIC_API_KEY` is removed from the Claude Code subprocess environment
+(`src/agent/agent-auth.ts`) — Claude Code would otherwise prefer the API key. The chosen method is
+logged as `authMethod` on the `agent_start` event in `agent-run.jsonl` (the value itself never is).
+
+> Subscription plans are meant for personal use of Claude Code — check Anthropic's current terms
+> before running Szumrak on a subscription token for anything beyond your own repositories.
+
+---
+
 ## 🔐 Environment Variables
 
 > Local development only (`npm start` / `npm run dev:run`, Levels 1–2 above). For the
@@ -312,7 +334,8 @@ see **[`docs/target-repo-integration.md`](./docs/target-repo-integration.md)**.
 
 | Variable | Required | Description |
 | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | yes | Claude API key |
+| `CLAUDE_CODE_OAUTH_TOKEN` | one of these two | Claude subscription (Pro/Max) token from `claude setup-token`; wins when both are set |
+| `ANTHROPIC_API_KEY` | one of these two | Claude API key (API billing); ignored when `CLAUDE_CODE_OAUTH_TOKEN` is set |
 | `TASK` | yes when `MODE=runner` | the task for the agent, in natural language |
 | `MODE` | no (default `runner`) | `runner` runs `TASK` and opens a new PR; `review-followup` addresses review feedback on `PR_NUMBER`'s existing branch instead; `ask` answers `QUESTION` read-only |
 | `PR_NUMBER` | yes when `MODE=review-followup` | PR number to follow up on |

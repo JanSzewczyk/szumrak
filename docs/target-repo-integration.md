@@ -39,7 +39,9 @@ questions about the code.
 - Permission to create a GitHub App on the account/organization that will act
   as the "bot" opening PRs (this can be a personal account if the target
   repository belongs to the same owner).
-- An [Anthropic API key](https://console.anthropic.com/) (`ANTHROPIC_API_KEY`).
+- A Claude credential: either a subscription (Pro/Max) token from `claude setup-token`
+  (`CLAUDE_CODE_OAUTH_TOKEN`) or an [Anthropic API key](https://console.anthropic.com/)
+  (`ANTHROPIC_API_KEY`). If both are set, the OAuth token wins.
 - The target repository must have GitHub Actions enabled.
 
 ---
@@ -111,11 +113,11 @@ specific user.
 ## Step 3 — set secrets on the target repository
 
 In the target repository: **Settings → Secrets and variables → Actions →
-New repository secret**. Add four secrets:
+New repository secret**. Add one Claude credential plus the three GitHub App secrets:
 
 | Secret name | Value |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | key from [console.anthropic.com](https://console.anthropic.com/) |
+| `CLAUDE_CODE_OAUTH_TOKEN` *or* `ANTHROPIC_API_KEY` | subscription token from `claude setup-token`, or API key from [console.anthropic.com](https://console.anthropic.com/) — the OAuth token wins if both exist |
 | `GH_APP_ID` | App ID from step 1.7 |
 | `GH_APP_PRIVATE_KEY` | full contents of the `.pem` file from step 1.8 |
 | `GH_APP_INSTALLATION_ID` | Installation ID from step 2.3 |
@@ -123,13 +125,14 @@ New repository secret**. Add four secrets:
 Via CLI (`gh`), from the target repository:
 
 ```bash
-gh secret set ANTHROPIC_API_KEY --body "sk-ant-..."
+gh secret set CLAUDE_CODE_OAUTH_TOKEN --body "sk-ant-oat01-..."   # subscription
+# or: gh secret set ANTHROPIC_API_KEY --body "sk-ant-..."         # API billing
 gh secret set GH_APP_ID --body "123456"
 gh secret set GH_APP_PRIVATE_KEY < path/to/private-key.pem
 gh secret set GH_APP_INSTALLATION_ID --body "78901234"
 ```
 
-These four names are **fixed** — the reusable workflows in this repo
+These names are **fixed** — the reusable workflows in this repo
 (`_worker-run.yml`, `_worker-review-followup.yml`, `_holmes.yml`) expect
 exactly these keys in their `secrets:` block. If a secret is named
 differently in the target repository (e.g. you already have
@@ -317,7 +320,8 @@ always required for real runs through Actions) and the reusable workflows'
 
 | Secret | Required | Where to get it |
 | --- | --- | --- |
-| `ANTHROPIC_API_KEY` | always | [console.anthropic.com](https://console.anthropic.com/) |
+| `CLAUDE_CODE_OAUTH_TOKEN` | one of these two (wins if both are set) | `claude setup-token` (Claude Pro/Max subscription) |
+| `ANTHROPIC_API_KEY` | one of these two | [console.anthropic.com](https://console.anthropic.com/) |
 | `GH_APP_ID` | always | GitHub App settings page |
 | `GH_APP_PRIVATE_KEY` | always | generated `.pem` file (full contents) |
 | `GH_APP_INSTALLATION_ID` | always | the App's installation page URL |
@@ -385,7 +389,7 @@ Expected behavior — the `github.actor == github.repository_owner` guard in
 both templates blocks the run for anyone but the repo owner (see Step 7.2).
 To allow other people, change the `if:` condition in the copied
 `szumrak-worker.yml`/`szumrak-holmes.yml` — deliberately, since every run
-burns real `ANTHROPIC_API_KEY` tokens.
+burns real Claude usage (API billing or subscription quota).
 
 ### `Unknown skill: ...` despite `"skills": "all"` in `agent-config.json`
 

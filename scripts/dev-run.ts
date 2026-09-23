@@ -27,6 +27,8 @@ function main() {
     "--env-file",
     ".env.local",
     "-e",
+    "CLAUDE_CODE_OAUTH_TOKEN",
+    "-e",
     "ANTHROPIC_API_KEY",
     "-e",
     "GH_TOKEN",

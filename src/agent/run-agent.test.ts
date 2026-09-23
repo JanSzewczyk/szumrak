@@ -99,6 +99,22 @@ describe("runAgent", () => {
     });
   });
 
+  test("passes only the OAuth token to the SDK subprocess when both credentials are set", async () => {
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = "sk-ant-oat01-test-token";
+    mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+
+    try {
+      await runAgent("task");
+    } finally {
+      delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    }
+
+    const options = mockedQuery.mock.calls[0]?.[0].options;
+    expect(options?.env?.CLAUDE_CODE_OAUTH_TOKEN).toBe("sk-ant-oat01-test-token");
+    expect(options?.env).not.toHaveProperty("ANTHROPIC_API_KEY");
+    expect(mockedLog).toHaveBeenCalledWith("agent_start", expect.objectContaining({ authMethod: "oauth-token" }));
+  });
+
   test("sets excludeDynamicSections so the static system-prompt prefix stays cross-run cacheable", async () => {
     mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
 
