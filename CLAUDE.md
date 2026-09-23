@@ -33,6 +33,7 @@ npm test            # vitest run — unit tests for src/**/*.test.ts
 npm run build       # docker build -t szumrak -f docker/Dockerfile . — the CI "build" check
 npm run dev:run     # docker run against $TARGET_REPO_PATH mounted at /workspace (DRY_RUN on) — local only
 npm run biome:check # Biome lint+format check (biome:fix to autofix)
+npm run knip        # Knip — unused files/exports/deps (config: knip.config.ts)
 ```
 
 `build` (not `dev:build`) on purpose: it is meant to run in the GH Actions PR-checks workflow, not
@@ -42,7 +43,7 @@ just locally — the image is this repo's only build artifact (no `tsc` compile 
 There is **no compile/build step for the source itself**: the TypeScript is run directly via
 **tsx** (locally and in Docker), so there is no `dist/`. `tsc` is typecheck-only (`noEmit`). There
 **is** a Vitest suite (`src/**/*.test.ts`, run via `npm test`) — verification for a change is
-`npm run typecheck && npm test && npm run biome:check`. Tests set `SKIP_ENV_VALIDATION=true`
+`npm run typecheck && npm test && npm run biome:check && npm run knip`. Tests set `SKIP_ENV_VALIDATION=true`
 (`vitest.config.ts`) so modules that import `env` don't need every required var set or risk the
 fail-fast `process.exit(1)` in `env.ts`. Lint/format is **Biome** — it strips `.js` extensions from
 relative imports, which is why the tsconfig uses `module: "ESNext"` + `moduleResolution: "Bundler"`;

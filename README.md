@@ -388,6 +388,8 @@ entrypoint that calls `main()` immediately on import rather than holding testabl
 | `npm run test:coverage` | `vitest run --coverage` |
 | `npm run biome:check` | Biome lint + format check |
 | `npm run biome:fix` | Biome lint + format, writing fixes |
+| `npm run knip` | Knip — unused files, exports and dependencies (config: `knip.config.ts`) |
+| `npm run knip:fix` | Knip, removing unused exports/dependencies automatically |
 | `npm run biome:lint` | Biome lint only |
 | `npm run biome:lint:fix` | Biome lint only, writing fixes |
 | `npm run biome:format` | Biome format check only |
@@ -502,7 +504,7 @@ This is a private (`package.json#private: true`), single-maintainer project — 
 to accept outside forks. If you're working in this repo:
 
 1. Follow the conventions in [`.claude/rules/code-style.md`](../claude-plugins/plugins/shared-rules/skills/sync-rules/rules/code-style.md) and [`CLAUDE.md`](./CLAUDE.md)
-2. Before opening a PR, run `npm run typecheck`, `npm run biome:check`, and `npm test` locally — the same checks CI runs
+2. Before opening a PR, run `npm run typecheck`, `npm run biome:check`, `npm run knip`, and `npm test` locally — the same checks CI runs
 3. Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/) (`feat:`/`fix:`/`chore:`)
 
 ---
