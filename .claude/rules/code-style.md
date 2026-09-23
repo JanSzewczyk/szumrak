@@ -114,23 +114,45 @@ This applies to all conditional expressions in JSX — single elements, fragment
 
 ## Enum const objects
 
-When a domain defines a paired `type` + `const` enum object (e.g. `ProjectStatus`), always use the const object's properties for values and `Extract<EnumType, ...>` for narrowed parameter types. Never use raw string literals.
+Model a closed set of string values as an **enum const object**: a `const` object literal with `as const`, plus a type of the **same name** derived from its values. Never use a TypeScript `enum` or a hand-written string-literal union. Keys are `UPPER_SNAKE_CASE`, values are the actual runtime strings.
 
 ```typescript
 // ✓
-status: ProjectStatus.DRAFT
-if (status === ProjectStatus.ACTIVE) { ... }
-const TRANSITIONS: Partial<Record<ProjectStatus, ProjectStatus>> = {
-  [ProjectStatus.DRAFT]: ProjectStatus.ACTIVE,
-};
-newStatus: Extract<ProjectStatus, "ACTIVE" | "COMPLETED">
+export const OrderStatus = {
+  PENDING: "pending",
+  PAID: "paid",
+  SHIPPED: "shipped",
+  CANCELLED: "cancelled"
+} as const;
+export type OrderStatus = (typeof OrderStatus)[keyof typeof OrderStatus];
 
 // ✗
-status: "DRAFT"
-if (status === "ACTIVE") { ... }
-const TRANSITIONS = { DRAFT: "ACTIVE" };
-newStatus: "ACTIVE" | "COMPLETED"
+enum OrderStatus { PENDING = "pending", PAID = "paid", SHIPPED = "shipped", CANCELLED = "cancelled" }
+type OrderStatus = "pending" | "paid" | "shipped" | "cancelled";
 ```
+
+A single `OrderStatus` import then serves as both the value (`OrderStatus.PAID`) and the type (`OrderStatus`). Always go through the const object's properties — in comparisons, record keys, schemas, and narrowed types (`Extract<OrderStatus, typeof OrderStatus.X>`). Never use raw string literals.
+
+```typescript
+// ✓
+if (order.status === OrderStatus.PAID) { ... }
+const STATUS_LABELS: Record<OrderStatus, string> = {
+  [OrderStatus.PENDING]: "Awaiting payment",
+  [OrderStatus.PAID]: "Paid",
+  [OrderStatus.SHIPPED]: "On its way",
+  [OrderStatus.CANCELLED]: "Cancelled"
+};
+status: z.enum([OrderStatus.PENDING, OrderStatus.PAID, OrderStatus.SHIPPED, OrderStatus.CANCELLED])
+nextStatus: Extract<OrderStatus, typeof OrderStatus.SHIPPED | typeof OrderStatus.CANCELLED>
+
+// ✗
+if (order.status === "paid") { ... }
+const STATUS_LABELS = { pending: "Awaiting payment", paid: "Paid" };
+status: z.enum(["pending", "paid", "shipped", "cancelled"])
+nextStatus: Extract<OrderStatus, "shipped" | "cancelled">
+```
+
+**Why:** the const object is the single source of truth — renaming or adding a value happens in one place, `Record<EnumType, ...>` turns a missed entry into a compile error, and unlike a TS `enum` it emits no extra runtime code and stays structurally compatible with plain strings coming from env vars, JSON, or an API.
 
 ## Comments
 
