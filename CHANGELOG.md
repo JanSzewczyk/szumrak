@@ -3,6 +3,32 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.13.0](https://github.com/JanSzewczyk/szumrak/compare/v1.12.1...v1.13.0) (2026-09-23)
+
+### Features
+
+* support CLAUDE_CODE_OAUTH_TOKEN subscription auth ([af809c4](https://github.com/JanSzewczyk/szumrak/commit/af809c452b135bf2c6820cabd48473dde9606134))
+
+### Documentation
+
+* add Target Repo Integration Guide to README and create separate integration document ([8c6dfe7](https://github.com/JanSzewczyk/szumrak/commit/8c6dfe74a7e0c6327fcde102652053acff04f8f9))
+* **rules:** define enum const object pattern in code style ([7a1477d](https://github.com/JanSzewczyk/szumrak/commit/7a1477d49792840cc93c803192f75359d4470e0f))
+* update CLAUDE.md to clarify read-only mode and workflow integration ([fd21d41](https://github.com/JanSzewczyk/szumrak/commit/fd21d4194ec5f131c37e19a50a9737c840e4c337))
+
+### Tests
+
+* **agent:** assert auth method via AgentAuthMethod const ([bd3a494](https://github.com/JanSzewczyk/szumrak/commit/bd3a4943a69d6fbc42ad288868a2f103435206c0))
+
+### Build System
+
+* **deps:** bump actions/setup-node ([93484cb](https://github.com/JanSzewczyk/szumrak/commit/93484cb21e236aae56d9cb69fc9402e343a39a61))
+* **deps:** bump the project-dependencies group across 1 directory with 11 updates ([9275716](https://github.com/JanSzewczyk/szumrak/commit/927571664c2687add185aa4ee1acf33f241e2cf1))
+
+### Continuous Integration
+
+* **agent:** add szumrakEngineVersion to agent configuration ([d6d87ff](https://github.com/JanSzewczyk/szumrak/commit/d6d87ffcac5ffc96642fad2b6939fcd5ebaf18dd))
+* **workflows:** add reusable workflows for szumrak-holmes and szumrak-worker ([cd81be9](https://github.com/JanSzewczyk/szumrak/commit/cd81be934df5914581f2547804721aa471aa6299))
+
 ## [1.12.1](https://github.com/JanSzewczyk/szumrak/compare/v1.12.0...v1.12.1) (2026-07-19)
 
 ### Bug Fixes
