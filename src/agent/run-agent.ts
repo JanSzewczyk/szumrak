@@ -2,6 +2,7 @@ import { query } from "@anthropic-ai/claude-agent-sdk";
 import { env } from "~/platform/env";
 import { log } from "~/platform/logger";
 import { SZUMRAK_VERSION } from "~/platform/version";
+import { resolveAgentAuth } from "./agent-auth";
 import { loadAgentConfig } from "./agent-config";
 import { ASK_MODE_INSTRUCTIONS } from "./ask-instructions";
 import {
@@ -70,8 +71,10 @@ export async function runAgent(task: string, options?: RunAgentOptions): Promise
   const startedAt = Date.now();
 
   const readOnly = options?.readOnly ?? false;
+  const auth = resolveAgentAuth();
 
   log("agent_start", {
+    authMethod: auth.method,
     szumrakVersion: SZUMRAK_VERSION,
     mode: env.MODE,
     readOnly,
@@ -95,6 +98,8 @@ export async function runAgent(task: string, options?: RunAgentOptions): Promise
     prompt: task,
     options: {
       cwd: env.WORKSPACE_PATH,
+      /** Carries exactly one auth credential — see agent/agent-auth.ts. */
+      env: auth.subprocessEnv,
       permissionMode: readOnly ? "default" : "acceptEdits",
       maxTurns: env.MAX_TURNS,
       model: env.AGENT_MODEL,

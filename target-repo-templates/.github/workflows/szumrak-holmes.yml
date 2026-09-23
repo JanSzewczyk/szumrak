@@ -38,7 +38,7 @@ jobs:
     name: Run Szumrak Holmes
     # github.repository_owner, not a hardcoded username, so this template stays
     # correct for whichever account/org owns the target repo it's copied into —
-    # every run costs real ANTHROPIC_API_KEY tokens, so a collaborator with
+    # every run costs real Claude usage (API or subscription), so a collaborator with
     # write access (but not the repo owner) triggering workflow_dispatch is
     # blocked before the job even starts, not just discouraged.
     if: github.actor == github.repository_owner

@@ -118,6 +118,12 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   as a `hook_event` (name, event, stdout/stderr, outcome) so their execution is visible in
   `agent-run.jsonl` instead of running silently in the SDK subprocess. Szumrak registers no SDK
   `hooks` of its own.
+- **`agent/agent-auth.ts`** (`resolveAgentAuth`) picks exactly one Claude credential for the SDK
+  subprocess: `CLAUDE_CODE_OAUTH_TOKEN` (subscription, from `claude setup-token`) wins over
+  `ANTHROPIC_API_KEY`. `run-agent.ts` passes its `subprocessEnv` as the SDK `env` option (which
+  *replaces* the subprocess environment, hence the deliberate `process.env` spread) with the losing
+  variable deleted — Claude Code itself would otherwise prefer the API key. The chosen method is
+  logged as `authMethod` on `agent_start`; `platform/env.ts` fails fast when neither is set.
 - **`agent/agent-config.ts`** loads `<WORKSPACE_PATH>/.claude/agent-config.json`, the target
   repo's opt-in agent configuration (it replaced the earlier permissions-only
   `.claude/agent-permissions.json`, which is no longer read).
@@ -179,7 +185,8 @@ Config is entirely env-var driven and validated in `platform/env.ts`: `TASK` (re
 `Mode` enum), `PR_NUMBER`/`REVIEW_FEEDBACK` (required only for `MODE=review-followup`),
 `QUESTION` (required only for `MODE=ask`, max 1000 chars), `WORKSPACE_PATH`,
 `REPO` (`owner/repo`), `GH_APP_ID`/`GH_APP_PRIVATE_KEY`/`GH_APP_INSTALLATION_ID` (GitHub App
-credentials — see below), `ANTHROPIC_API_KEY`, `DRY_RUN`, `AGENT_MODEL`, `MAX_TURNS`,
+credentials — see below), `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` (at least one
+required, the OAuth token wins — see `agent/agent-auth.ts`), `DRY_RUN`, `AGENT_MODEL`, `MAX_TURNS`,
 `MAX_DURATION_MS`, `AGENT_LOG_PATH`, `TARGET_REPO_PATH` (local-only, used by `dev:run`),
 `GITHUB_STEP_SUMMARY` (read by `platform/summary.ts`). See README table and `.env.example`.
 `REPO`/the App credentials are optional in the schema but required for real (non-`DRY_RUN`) runs —
@@ -191,6 +198,10 @@ credentials — see below), `ANTHROPIC_API_KEY`, `DRY_RUN`, `AGENT_MODEL`, `MAX_
   `node_modules/@anthropic-ai/claude-agent-sdk/sdk.d.ts` before changing `agent/run-agent.ts`. The
   public docs summary has been wrong about message/result shapes (e.g. claiming flat
   `message.content` or a `status` field — neither exists in the installed version).
+- **Exactly one Claude credential reaches the SDK subprocess, and `CLAUDE_CODE_OAUTH_TOKEN` wins.**
+  `agent/agent-auth.ts` deletes the unused variable from the `env` passed to `query()`. Don't drop
+  the `env` option (the subprocess would inherit both, and Claude Code prefers the API key) and don't
+  log either value — only `authMethod`.
 - **`github/git-operations.ts` uses `execFileSync` with an argument array on purpose — never
   `execSync` on an interpolated string.** `TASK` is untrusted input (in CI it comes from a GitHub
   comment body), so string interpolation into a shell command is a command-injection vector.

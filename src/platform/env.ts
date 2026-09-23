@@ -62,7 +62,24 @@ if (!process.env.MODE) {
  */
 export const env = createEnv({
   server: {
-    ANTHROPIC_API_KEY: z.string().min(1).describe("Claude API key, read by the Claude Agent SDK"),
+    /**
+     * Exactly one of these two authenticates the agent — at least one is
+     * required (enforced in createFinalSchema below). When both are set the
+     * OAuth token wins and the API key never reaches the SDK subprocess; see
+     * `agent/agent-auth.ts`.
+     */
+    CLAUDE_CODE_OAUTH_TOKEN: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Claude subscription (Pro/Max) OAuth token from `claude setup-token`; takes precedence over ANTHROPIC_API_KEY"
+      ),
+    ANTHROPIC_API_KEY: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("Claude API key, read by the Claude Agent SDK; ignored when CLAUDE_CODE_OAUTH_TOKEN is set"),
     /**
      * TASK/MODE/PR_NUMBER/REVIEW_FEEDBACK stay declared here too, loosely
      * (optional) — this dictionary is also what .env.example-style tooling
@@ -188,7 +205,8 @@ export const env = createEnv({
    * Rebuilds the final schema as an intersection of the common fields with a
    * MODE-discriminated union, instead of the flat z.object(shape) t3-env
    * would build by default — see the comment on RunnerModeEnv above for why.
-   * The trailing superRefine enforces REPO/GH_APP_* unless DRY_RUN=true —
+   * The trailing superRefine requires one of CLAUDE_CODE_OAUTH_TOKEN /
+   * ANTHROPIC_API_KEY always, and enforces REPO/GH_APP_* unless DRY_RUN=true —
    * this used to be a manual `if` in index.ts, checked *after* env had
    * already been validated; it belongs here so every configuration error
    * (MODE-dependent or DRY_RUN-dependent) surfaces the same way, at import
@@ -200,6 +218,14 @@ export const env = createEnv({
       .object(common)
       .and(z.discriminatedUnion("MODE", [RunnerModeEnv, ReviewFollowUpModeEnv, AskModeEnv]))
       .superRefine((env, ctx) => {
+        /** Checked before the DRY_RUN early return: a dry run still calls the model. */
+        if (!env.CLAUDE_CODE_OAUTH_TOKEN && !env.ANTHROPIC_API_KEY) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["CLAUDE_CODE_OAUTH_TOKEN"],
+            message: "Set CLAUDE_CODE_OAUTH_TOKEN (subscription) or ANTHROPIC_API_KEY (API billing)"
+          });
+        }
         if (env.DRY_RUN) {
           return;
         }
