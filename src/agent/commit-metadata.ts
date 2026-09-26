@@ -1,6 +1,6 @@
 import { log } from "~/platform/logger";
 
-const CONVENTIONAL_COMMIT_TYPES = [
+export const CONVENTIONAL_COMMIT_TYPES = [
   "feat",
   "fix",
   "chore",
@@ -89,6 +89,17 @@ export function parseCommitMetadata(finalMessage: string): CommitMetadata | unde
     }
   }
 
+  return toCommitMetadata(fields);
+}
+
+/**
+ * Validates and normalizes raw commit fields into {@link CommitMetadata} —
+ * shared by the fenced-block parser above and by flows that receive the same
+ * fields as SDK structured output instead (flows/skill-workflow).
+ */
+export function toCommitMetadata(
+  fields: Partial<Record<"type" | "scope" | "subject" | "branch", string>>
+): CommitMetadata | undefined {
   const type = fields.type as ConventionalCommitType;
   if (!CONVENTIONAL_COMMIT_TYPES.includes(type) || !fields.subject || !fields.branch) {
     log("commit_metadata_invalid", { fields });

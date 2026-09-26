@@ -1,0 +1,174 @@
+# Reusable workflow — called via `uses:` from a target repo's own
+# .github/workflows/szumrak-skill-workflow.yml (see target-repo-templates/). Runs
+# MODE=skill-workflow: a skill that lives in the target repo, driven end to end by
+# its manifest at .claude/szumrak/skill-workflows/<skill_workflow>.json. Pin the
+# caller's `uses: .../_skill-workflow.yml@<ref>` to `main` for automatic updates or
+# to a release tag for deliberate bumps — see README.md.
+#
+# The caller MUST pass `secrets: inherit`: the manifest decides which secrets the
+# run needs (e.g. JIRA_API_TOKEN), so their names can't be declared here up front.
+# Only the secrets the manifest lists are forwarded into the container — see the
+# "Collect declared secrets" step.
+name: Szumrak Skill Workflow (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      skill_workflow:
+        description: "Manifest name: .claude/szumrak/skill-workflows/<skill_workflow>.json"
+        required: true
+        type: string
+      inputs:
+        description: "JSON object with the skill workflow's inputs, validated against its manifest"
+        required: false
+        type: string
+        default: "{}"
+      agent_model:
+        description: "Fallback model; the manifest's own `model` wins when set"
+        required: false
+        type: string
+        default: haiku
+      timeout_minutes:
+        required: false
+        type: number
+        default: 40
+    secrets:
+      # One of CLAUDE_CODE_OAUTH_TOKEN (subscription) or ANTHROPIC_API_KEY is
+      # required; when both are set the OAuth token wins (src/agent/agent-auth.ts).
+      CLAUDE_CODE_OAUTH_TOKEN:
+        required: false
+      ANTHROPIC_API_KEY:
+        required: false
+      GH_APP_ID:
+        required: true
+      GH_APP_PRIVATE_KEY:
+        required: true
+      GH_APP_INSTALLATION_ID:
+        required: true
+
+# Read-only on purpose: GITHUB_TOKEN is only used to check the repo out. Every
+# write (push, PR, labels) goes through the szumrak-bot GitHub App — Szumrak's own
+# installation token, or the repo-scoped token it mints for the agent from the
+# manifest's `github.permissions`.
+permissions:
+  contents: read
+
+jobs:
+  run-skill-workflow:
+    name: Run skill workflow 🧩
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    # Same group as the worker workflows: a skill workflow may push branches too,
+    # so it must not race a runner/review-followup run on the same repo.
+    concurrency:
+      group: szumrak-${{ github.repository }}
+      cancel-in-progress: false
+    steps:
+      # Always the default branch, whatever ref triggered the caller: the manifest
+      # and agent-config.json decide what the agent is allowed to do, so they must
+      # come from reviewed code, never from a PR branch or an arbitrary ref.
+      - name: Checkout target repo (default branch)
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          path: workspace
+
+      - name: Validate skill workflow name
+        env:
+          SKILL_WORKFLOW: ${{ inputs.skill_workflow }}
+        run: |
+          if [[ ! "$SKILL_WORKFLOW" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+            echo "::error::skill_workflow must be a lowercase slug (a-z, 0-9, '-')"
+            exit 1
+          fi
+          if [[ ! -f "workspace/.claude/szumrak/skill-workflows/$SKILL_WORKFLOW.json" ]]; then
+            echo "::error::Manifest not found: .claude/szumrak/skill-workflows/$SKILL_WORKFLOW.json"
+            exit 1
+          fi
+
+      # Resolves which Szumrak engine ref to build from the target repo's own
+      # .claude/agent-config.json (szumrakEngineVersion field — a real
+      # JanSzewczyk/szumrak release tag). Falls back to "main" when the file,
+      # field, or jq itself is missing/fails — never fails the job over this.
+      - name: Resolve Szumrak engine ref
+        run: |
+          REF="main"
+          RESOLVED=$(jq -r '.szumrakEngineVersion // empty' workspace/.claude/agent-config.json 2>/dev/null || true)
+          if [[ "$RESOLVED" =~ ^[A-Za-z0-9._/-]+$ ]]; then
+            REF="$RESOLVED"
+          fi
+          echo "SZUMRAK_REF=$REF" >> "$GITHUB_ENV"
+
+      # Same best-effort dependency pre-install as the worker workflows, so the
+      # skill can run the repo's own scripts (tests, type-check) inside the container.
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: workspace/package-lock.json
+
+      - name: Install target repo dependencies
+        working-directory: workspace
+        continue-on-error: true
+        run: npm ci
+
+      # `secrets: inherit` exposes every repository secret here; this narrows them
+      # to exactly the names in the manifest's `secrets` array before anything
+      # reaches the container. GitHub keeps masking the values in logs.
+      - name: Collect declared secrets
+        env:
+          ALL_SECRETS: ${{ toJSON(secrets) }}
+          SKILL_WORKFLOW: ${{ inputs.skill_workflow }}
+        run: |
+          NAMES=$(jq -c '.secrets // []' "workspace/.claude/szumrak/skill-workflows/$SKILL_WORKFLOW.json")
+          printf '%s' "$ALL_SECRETS" \
+            | jq -c --argjson names "$NAMES" 'with_entries(select(.key as $k | $names | index($k)))' \
+            > "$RUNNER_TEMP/skill-workflow-secrets.json"
+          echo "Forwarding declared secrets: $(jq -r 'keys | join(", ")' "$RUNNER_TEMP/skill-workflow-secrets.json")"
+
+      - name: Checkout szumrak
+        uses: actions/checkout@v7
+        with:
+          repository: JanSzewczyk/szumrak
+          ref: ${{ env.SZUMRAK_REF }}
+          path: szumrak-src
+
+      - name: Build Szumrak image
+        run: docker build -t szumrak -f szumrak-src/docker/Dockerfile szumrak-src
+
+      - name: Run Szumrak skill workflow
+        env:
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GH_APP_ID: ${{ secrets.GH_APP_ID }}
+          GH_APP_PRIVATE_KEY: ${{ secrets.GH_APP_PRIVATE_KEY }}
+          GH_APP_INSTALLATION_ID: ${{ secrets.GH_APP_INSTALLATION_ID }}
+          REPO: ${{ github.repository }}
+          AGENT_MODEL: ${{ inputs.agent_model }}
+          MODE: skill-workflow
+          SKILL_WORKFLOW: ${{ inputs.skill_workflow }}
+          SKILL_WORKFLOW_INPUTS: ${{ inputs.inputs }}
+        run: |
+          SKILL_WORKFLOW_SECRETS="$(cat "$RUNNER_TEMP/skill-workflow-secrets.json")"
+          export SKILL_WORKFLOW_SECRETS
+          docker run --rm \
+            -e CLAUDE_CODE_OAUTH_TOKEN -e ANTHROPIC_API_KEY -e GH_APP_ID -e GH_APP_PRIVATE_KEY -e GH_APP_INSTALLATION_ID \
+            -e REPO -e AGENT_MODEL -e MODE -e SKILL_WORKFLOW -e SKILL_WORKFLOW_INPUTS -e SKILL_WORKFLOW_SECRETS \
+            -e GITHUB_STEP_SUMMARY \
+            -v ${{ github.workspace }}/workspace:/workspace \
+            -v "$GITHUB_STEP_SUMMARY:$GITHUB_STEP_SUMMARY" \
+            szumrak
+
+      - name: Remove collected secrets
+        if: always()
+        run: rm -f "$RUNNER_TEMP/skill-workflow-secrets.json"
+
+      - name: Upload Szumrak log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: szumrak-skill-workflow-log
+          path: ${{ github.workspace }}/workspace/agent-run.jsonl
+          if-no-files-found: ignore

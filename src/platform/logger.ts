@@ -34,8 +34,32 @@ const SECRET_PATTERNS: Array<RegExp> = [
  */
 const MAX_STRING_LENGTH = 500;
 
+/**
+ * Shorter values are skipped: redacting e.g. a 3-char value would shred
+ * unrelated log text while protecting nothing worth protecting.
+ */
+const MIN_REGISTERED_SECRET_LENGTH = 6;
+
+/**
+ * Exact values handed to this run at runtime (skill workflow secrets, the
+ * scoped GitHub token) — arbitrary vendor formats the patterns above can't
+ * know about, so they're redacted verbatim instead.
+ */
+const registeredSecrets = new Set<string>();
+
+export function registerSecretValues(values: Iterable<string>): void {
+  for (const value of values) {
+    if (value.length >= MIN_REGISTERED_SECRET_LENGTH) {
+      registeredSecrets.add(value);
+    }
+  }
+}
+
 function redactSecrets(value: string): string {
   let redacted = value;
+  for (const secret of registeredSecrets) {
+    redacted = redacted.replaceAll(secret, "[REDACTED]");
+  }
   for (const pattern of SECRET_PATTERNS) {
     redacted = redacted.replace(pattern, "[REDACTED]");
   }

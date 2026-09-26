@@ -66,6 +66,7 @@ to be built from source inside a target repository's own CI, rather than publish
 - [🎯 Getting Started](#-getting-started)
 - [🚀 Usage](#-usage)
 - [🔀 Flows](#-flows)
+- [🧩 Skill workflows](#-skill-workflows)
 - [🧩 Target Repo Configuration](#-target-repo-configuration)
 - [📘 Target Repo Integration Guide](#-target-repo-integration-guide)
 - [🔑 Authentication](#-authentication)
@@ -209,7 +210,7 @@ pins the *Docker image* built inside the reusable workflow, not the workflow YAM
 ## 🔀 Flows
 
 `MODE` selects which flow the agent runs (`src/flows/`; dispatched via `flowRegistry`,
-`src/flows/registry.ts`). Three flows exist today:
+`src/flows/registry.ts`). Four flows exist today:
 
 - **`runner`** (`MODE=runner`, default) — runs `TASK` from scratch against a fresh checkout and,
   on success, opens a new PR. Skips the run entirely if an open PR already exists for the same
@@ -224,12 +225,78 @@ pins the *Docker image* built inside the reusable workflow, not the workflow YAM
   `GITHUB_STEP_SUMMARY`. Never commits, pushes, or opens a PR; independent of `runner`'s `verify`
   gate. A question unrelated to the repository still succeeds — the agent declines explicitly
   instead of answering off-topic.
+- **`skill-workflow`** (`MODE=skill-workflow`) — runs a **skill that lives in the target repo**
+  end to end (e.g. "fetch Jira ticket → implement → branch → commit → open PR"), described by a
+  manifest in the target repo. The process itself is the target repo's; Szumrak prepares exactly
+  the environment the manifest declares (inputs, secrets, MCP servers, a scoped GitHub token),
+  runs the skill, and checks the result. See [Skill workflows](#-skill-workflows).
 
 ```text
 MODE=runner              checkout main → run agent → commit → open new PR
 MODE=review-followup     checkout PR branch → run agent → commit → push to same PR
 MODE=ask                 run agent read-only → write answer to GITHUB_STEP_SUMMARY (no PR)
+MODE=skill-workflow      load manifest → prepare secrets/MCP/token → run skill → verify its PR (or open one)
 ```
+
+---
+
+## 🧩 Skill workflows
+
+A skill workflow turns one of the target repo's own skills (`.claude/skills/<skill>/SKILL.md`) into
+an unattended CI job. The skill holds the process; a manifest at
+`.claude/szumrak/skill-workflows/<name>.json` holds the **run contract** — what the run is given
+and what it's allowed to do. See
+[`target-repo-templates/.claude/szumrak/skill-workflows/do-ticket.json`](./target-repo-templates/.claude/szumrak/skill-workflows/do-ticket.json):
+
+```jsonc
+{
+  "skill": "do-ticket",                        // entry skill, invoked via the Skill tool
+  "args": "{{inputs.ticket}}",                 // skill arguments, filled from validated inputs
+  "inputs": { "ticket": { "required": true, "pattern": "[A-Z][A-Z0-9]+-\\d+", "maxLength": 32 } },
+  "delivery": "agent",                         // agent: the skill opens the PR itself | engine: Szumrak does
+  "model": "sonnet", "maxTurns": 80, "maxDurationMinutes": 35, "maxBudgetUsd": 5,
+  "secrets": ["JIRA_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"], // the only secrets forwarded to the run
+  "agentEnv": [],                              // secrets exposed to the agent's own env (for CLIs)
+  "mcpServers": ["atlassian"],                 // servers from the repo's .mcp.json — all required
+  "github": { "permissions": { "contents": "write", "pull_requests": "write" } },
+  "permissions": { "allow": ["Bash(gh pr create *)", "mcp__atlassian__*"] }
+}
+```
+
+**How credentials reach the run** — least privilege, per workflow:
+
+- **GitHub (`gh`, `git push`)** — Szumrak mints a GitHub App installation token scoped to *this
+  repo only* and to `github.permissions` (default for `delivery: agent`: contents + pull requests
+  write), valid for an hour. It's exported as `GH_TOKEN`/`GITHUB_TOKEN` and set on the git
+  remote. The App's private key never reaches the agent. `workflows: write` is opt-in only: with
+  it the agent could push a branch carrying a new workflow file that runs with every repo secret.
+- **MCP servers (preferred for third-party APIs)** — defined in the target repo's `.mcp.json`
+  (the same file developers use interactively), selected by `mcpServers`, passed to the SDK with
+  `strictMcpConfig` so no other server loads. `${VAR}` references are expanded **only** from the
+  manifest's declared `secrets`, so a secret lands in that server's `env`/`headers`, not in the
+  agent's shell. A server that reports `failed`/`needs-auth` at session start aborts the run
+  before any work.
+- **CLIs** — a secret listed in `agentEnv` becomes a plain env var of the agent (and is therefore
+  readable by it). Use it only when a CLI has no MCP alternative.
+- **Everything else** — the agent's environment is an allowlist (`src/agent/agent-auth.ts`): no
+  `GH_APP_*`, no undeclared secrets. Every forwarded secret value is redacted verbatim from
+  `agent-run.jsonl`.
+
+**Guardrails Szumrak adds regardless of the manifest:** the manifest and `agent-config.json` are
+read from the default branch; the agent can't edit `.claude/agent-config.json` or
+`.claude/szumrak/**`; inputs are validated against the manifest (undeclared keys rejected,
+`pattern` fully anchored); for `delivery: agent`, force-pushes/pushes to `main`/`master`/`gh pr
+merge` are denied and the reported PR must belong to this repo on a non-default branch (branch
+protection on the default branch is still the real guard). The run ends with a structured
+result (`completed`/`blocked`, summary, PR URL or commit metadata) instead of free text; the PR is
+labelled `ai-generated`, gets the cost table and a hidden marker used to skip re-runs with the
+same inputs while it's open.
+
+Trigger it with `target-repo-templates/.github/workflows/szumrak-skill-workflow.yml` (a
+`workflow_dispatch` job taking `skill_workflow` + JSON `inputs`, plus a `repository_dispatch`
+example for starting a workflow from a Jira automation). It calls the reusable
+[`_skill-workflow.yml`](.github/workflows/_skill-workflow.yml) with `secrets: inherit`, which
+forwards only the secrets the manifest declares.
 
 ---
 
@@ -337,10 +404,13 @@ logged as `authMethod` on the `agent_start` event in `agent-run.jsonl` (the valu
 | `CLAUDE_CODE_OAUTH_TOKEN` | one of these two | Claude subscription (Pro/Max) token from `claude setup-token`; wins when both are set |
 | `ANTHROPIC_API_KEY` | one of these two | Claude API key (API billing); ignored when `CLAUDE_CODE_OAUTH_TOKEN` is set |
 | `TASK` | yes when `MODE=runner` | the task for the agent, in natural language |
-| `MODE` | no (default `runner`) | `runner` runs `TASK` and opens a new PR; `review-followup` addresses review feedback on `PR_NUMBER`'s existing branch instead; `ask` answers `QUESTION` read-only |
+| `MODE` | no (default `runner`) | `runner` runs `TASK` and opens a new PR; `review-followup` addresses review feedback on `PR_NUMBER`'s existing branch instead; `ask` answers `QUESTION` read-only; `skill-workflow` runs the target repo's `SKILL_WORKFLOW` manifest |
 | `PR_NUMBER` | yes when `MODE=review-followup` | PR number to follow up on |
 | `REVIEW_FEEDBACK` | yes when `MODE=review-followup` | reviewer's feedback text to address |
 | `QUESTION` | yes when `MODE=ask` | question for the agent to answer about the target repository, in natural language (max 1000 characters) |
+| `SKILL_WORKFLOW` | yes when `MODE=skill-workflow` | manifest name: `.claude/szumrak/skill-workflows/<name>.json` in the target repo |
+| `SKILL_WORKFLOW_INPUTS` | no (default `{}`) | JSON object of the skill workflow's inputs, validated against its manifest |
+| `SKILL_WORKFLOW_SECRETS` | when the manifest declares `secrets` | JSON object `{ "NAME": "value" }` of the secrets the manifest declares |
 | `WORKSPACE_PATH` | no (default `/workspace`) | path to the target repository |
 | `REPO` | yes when opening a PR | `owner/repo` of the target repository |
 | `GH_APP_ID` | yes when opening a PR | GitHub App ID |
@@ -414,13 +484,15 @@ szumrak/
 ├── src/
 │   ├── index.ts                 # entrypoint — guards required env, dispatches to a flow by MODE
 │   ├── types/                     # types/enums shared across layers (flows AND platform need them)
-│   │   └── mode.ts                  # const Mode { RUNNER, REVIEW_FOLLOWUP, ASK } — single source of truth for MODE
+│   │   ├── mode.ts                  # const Mode { RUNNER, REVIEW_FOLLOWUP, ASK, SKILL_WORKFLOW } — single source of truth for MODE
+│   │   └── github-access.ts         # GitHubAccess / ScopedTokenPermissions for the agent's scoped token
 │   ├── flows/                     # one flow per orchestration path, each in its own folder
 │   │   ├── registry.ts               # Record<Mode, runner> — the only place index.ts dispatches through
 │   │   ├── types.ts                   # shared FlowResult contract
 │   │   ├── runner/                     # MODE=runner — run TASK from scratch and open a new PR
 │   │   ├── review-followup/             # MODE=review-followup — continue an existing PR's branch
-│   │   └── ask/                          # MODE=ask — answer QUESTION read-only, no PR
+│   │   ├── ask/                          # MODE=ask — answer QUESTION read-only, no PR
+│   │   └── skill-workflow/                # MODE=skill-workflow — run a target-repo skill per its manifest
 │   ├── agent/                       # reusable Claude Agent SDK wrapper, used by every flow
 │   │   ├── run-agent.ts               # wraps the SDK query() stream; hook/skill/CLAUDE.md loading lives here
 │   │   ├── agent-config.ts             # loads the target repo's .claude/agent-config.json
@@ -440,13 +512,16 @@ szumrak/
 ├── target-repo-templates/         # files meant to be copied INTO the target repo, not consumed here
 │   ├── CLAUDE.md
 │   ├── .claude/agent-config.json    # permissions / skills / verify — see Target Repo Configuration
+│   ├── .claude/szumrak/skill-workflows/do-ticket.json  # example skill workflow manifest
 │   └── .github/workflows/
 │       ├── szumrak-worker.yml          # thin caller: triggers + `uses: _worker-run.yml` / `_worker-review-followup.yml`
-│       └── szumrak-holmes.yml          # thin caller: triggers + `uses: _holmes.yml`
+│       ├── szumrak-holmes.yml          # thin caller: triggers + `uses: _holmes.yml`
+│       └── szumrak-skill-workflow.yml  # thin caller: triggers + `uses: _skill-workflow.yml`
 ├── .github/workflows/
 │   ├── _worker-run.yml             # reusable workflow: the `work` job body (called from target repos)
 │   ├── _worker-review-followup.yml  # reusable workflow: the `review-followup` job body
-│   └── _holmes.yml                  # reusable workflow: the MODE=ask job body
+│   ├── _holmes.yml                  # reusable workflow: the MODE=ask job body
+│   └── _skill-workflow.yml          # reusable workflow: the MODE=skill-workflow job body
 ├── biome.json
 ├── vitest.config.ts
 ├── tsconfig.json

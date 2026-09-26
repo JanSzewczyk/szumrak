@@ -28,6 +28,7 @@ async function main() {
     prNumber: "PR_NUMBER" in env ? env.PR_NUMBER : undefined,
     hasReviewFeedback: "REVIEW_FEEDBACK" in env,
     hasQuestion: "QUESTION" in env,
+    skillWorkflow: "SKILL_WORKFLOW" in env ? env.SKILL_WORKFLOW : undefined,
     agentModel: env.AGENT_MODEL,
     maxTurns: env.MAX_TURNS,
     maxDurationMs: env.MAX_DURATION_MS,
@@ -66,6 +67,18 @@ async function main() {
 
     if (env.MODE === Mode.ASK) {
       const result = await flowRegistry[Mode.ASK]({ question: env.QUESTION });
+      if (!result.succeeded) {
+        process.exit(1);
+      }
+      return;
+    }
+
+    if (env.MODE === Mode.SKILL_WORKFLOW) {
+      const result = await flowRegistry[Mode.SKILL_WORKFLOW]({
+        name: env.SKILL_WORKFLOW,
+        rawInputs: env.SKILL_WORKFLOW_INPUTS,
+        rawSecrets: env.SKILL_WORKFLOW_SECRETS
+      });
       if (!result.succeeded) {
         process.exit(1);
       }

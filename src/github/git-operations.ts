@@ -49,9 +49,13 @@ export function git(args: Array<string>): string {
  * the directory that ends up mounted as WORKSPACE_PATH). Embedding the token
  * in the remote URL is explicit and doesn't depend on any of that. Bypasses
  * the {@link git} wrapper so the token is never written to `agent-run.jsonl`.
+ *
+ * A skill workflow that pushes by itself passes its scoped token instead: the
+ * remote URL lives in `.git/config`, which the agent can read, so it must
+ * never carry the unscoped installation token during an agent run.
  */
-export async function configureGitRemoteAuth(owner: string, repo: string): Promise<void> {
-  const token = await getInstallationToken();
+export async function configureGitRemoteAuth(owner: string, repo: string, scopedToken?: string): Promise<void> {
+  const token = scopedToken ?? (await getInstallationToken());
   const authedUrl = `https://x-access-token:${token}@github.com/${owner}/${repo}.git`;
   execFileSync("git", ["remote", "set-url", "origin", authedUrl], { cwd: env.WORKSPACE_PATH });
   log("git", { args: ["remote", "set-url", "origin", "<redacted>"] });

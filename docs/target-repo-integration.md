@@ -26,9 +26,10 @@ questions about the code.
 6. [Step 5 — customize `CLAUDE.md` and `agent-config.json`](#step-5--customize-claudemd-and-agent-configjson)
 7. [Step 6 — check hook executable bits](#step-6--check-hook-executable-bits)
 8. [Step 7 — first run](#step-7--first-run)
-9. [Versioning: `uses:@ref` vs `szumrakEngineVersion`](#versioning-usesref-vs-szumrakengineversion)
-10. [Full environment variable / secret reference](#full-environment-variable--secret-reference)
-11. [Troubleshooting](#troubleshooting)
+9. [Optional — skill workflows](#optional--skill-workflows)
+10. [Versioning: `uses:@ref` vs `szumrakEngineVersion`](#versioning-usesref-vs-szumrakengineversion)
+11. [Full environment variable / secret reference](#full-environment-variable--secret-reference)
+12. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -278,6 +279,54 @@ particular quality check silently does nothing instead of actually running.
 
    The answer lands in that run's **Summary** tab (`GITHUB_STEP_SUMMARY`),
    never in a PR or commit.
+
+---
+
+## Optional — skill workflows
+
+A skill workflow runs one of the target repo's own skills end to end in CI (e.g. a `do-ticket`
+skill that fetches a Jira ticket, implements it and opens a PR). The overview lives in the
+README's [Skill workflows](../README.md#-skill-workflows) section; the setup is:
+
+1. **The skill** — `.claude/skills/<skill>/SKILL.md`, the same skill you run interactively.
+   Write it so it works unattended: no questions to the user, and it ends by reporting what it
+   delivered (Szumrak asks for a structured result on top of it).
+2. **The manifest** — copy
+   `target-repo-templates/.claude/szumrak/skill-workflows/do-ticket.json` to
+   `.claude/szumrak/skill-workflows/<name>.json` and adjust `skill`, `inputs`, `delivery`,
+   limits, `secrets`, `mcpServers`, `github.permissions` and `permissions`. It must be on the
+   **default branch** — the reusable workflow always checks that branch out.
+3. **MCP servers** — define them in the repo's `.mcp.json` (the same file developers use),
+   referencing credentials as `${VAR}`; every `VAR` must be listed in the manifest's `secrets`:
+
+   ```json
+   {
+     "mcpServers": {
+       "atlassian": {
+         "command": "npx",
+         "args": ["-y", "<your Jira MCP server package>"],
+         "env": { "JIRA_URL": "${JIRA_URL}", "JIRA_USERNAME": "${JIRA_EMAIL}", "JIRA_API_TOKEN": "${JIRA_API_TOKEN}" }
+       }
+     }
+   }
+   ```
+
+4. **Secrets** — add every name from the manifest's `secrets` under **Settings → Secrets and
+   variables → Actions**. Prefer a dedicated service account with the narrowest token scope the
+   skill needs (e.g. read issues + comment) over a personal token. Only declared secrets are
+   forwarded to the run; list a secret in `agentEnv` only when a CLI needs it as an env var — the
+   agent itself can read those.
+5. **The trigger** — copy `target-repo-templates/.github/workflows/szumrak-skill-workflow.yml`.
+   Its `workflow_dispatch` job runs any manifest by name with JSON `inputs`
+   (e.g. `{"ticket": "PROJ-123"}`); the commented `repository_dispatch` job shows a dedicated
+   trigger for a Jira automation. Keep `secrets: inherit`.
+6. **Protect the default branch** — with `delivery: "agent"` the skill pushes its own branch;
+   Szumrak denies the obvious force/default-branch pushes, but branch protection is the real guard.
+
+Try it locally first with `DRY_RUN=true MODE=skill-workflow SKILL_WORKFLOW=<name>
+SKILL_WORKFLOW_INPUTS='{"ticket":"PROJ-1"}' SKILL_WORKFLOW_SECRETS='{...}'` (Level 1 in the
+README) — a dry run mints no GitHub token and tells the skill not to push or change external
+systems.
 
 ---
 

@@ -17,3 +17,19 @@ export async function findOpenPRForTask(owner: string, repo: string, task: strin
   log("task_already_handled", { url: existing.html_url });
   return existing.html_url;
 }
+
+/**
+ * Same idea as {@link findOpenPRForTask}, keyed on an invisible HTML-comment
+ * marker instead of "Task:\n<TASK>" text — a skill workflow's PR body may be
+ * written by the target repo's own skill, so Szumrak can't rely on its layout,
+ * only on a marker it appends itself.
+ */
+export async function findOpenPRWithMarker(owner: string, repo: string, marker: string): Promise<string | null> {
+  const { data: openPRs } = await octokit.pulls.list({ owner, repo, state: "open", per_page: 100 });
+  const existing = openPRs.find((pr) => pr.body?.includes(marker));
+  if (!existing) {
+    return null;
+  }
+  log("task_already_handled", { url: existing.html_url });
+  return existing.html_url;
+}

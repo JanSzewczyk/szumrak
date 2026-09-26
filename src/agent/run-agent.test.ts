@@ -572,4 +572,120 @@ describe("runAgent", () => {
       );
     });
   });
+
+  describe("per-run options", () => {
+    function initMessage(mcpServers: Array<{ name: string; status: string }>) {
+      return { type: "system", subtype: "init", mcp_servers: mcpServers, tools: [] };
+    }
+
+    function queryOptions() {
+      return mockedQuery.mock.calls[0]?.[0].options;
+    }
+
+    test("overrides model, turn and budget limits and replaces the system prompt addendum", async () => {
+      mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+
+      await runAgent("task", { model: "sonnet", maxTurns: 80, maxBudgetUsd: 5, systemPromptAppend: "SKILL RULES" });
+
+      expect(queryOptions()).toMatchObject({
+        model: "sonnet",
+        maxTurns: 80,
+        maxBudgetUsd: 5,
+        systemPrompt: { append: "SKILL RULES" }
+      });
+    });
+
+    test("adds extra env vars on top of the allowlisted subprocess env", async () => {
+      mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+
+      await runAgent("task", { env: { GH_TOKEN: "ghs_x" } });
+
+      expect(queryOptions()?.env).toMatchObject({ GH_TOKEN: "ghs_x", PATH: process.env.PATH });
+    });
+
+    test("merges extra permissions into agent-config.json's instead of replacing them", async () => {
+      configOnDisk(CONFIG_PATH, { permissions: { allow: ["Read"], deny: ["Bash(rm -rf*)"] } });
+      mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+
+      await runAgent("task", { permissions: { allow: ["Bash(gh pr create *)"], deny: ["Edit(.claude/szumrak/**)"] } });
+
+      expect(queryOptions()).toMatchObject({
+        allowedTools: ["Read", "Bash(gh pr create *)"],
+        disallowedTools: ["Bash(rm -rf*)", "Edit(.claude/szumrak/**)"]
+      });
+    });
+
+    test("replaces agent-config.json's skills when skills are passed", async () => {
+      configOnDisk(CONFIG_PATH, { skills: ["a"] });
+      mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+
+      await runAgent("task", { skills: ["do-ticket"] });
+
+      expect(queryOptions()?.skills).toEqual(["do-ticket"]);
+    });
+
+    test("passes MCP servers in strict mode and the output format", async () => {
+      mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+      const outputFormat = { type: "json_schema" as const, schema: { type: "object" } };
+
+      await runAgent("task", { mcpServers: { atlassian: { command: "npx" } }, outputFormat });
+
+      expect(queryOptions()).toMatchObject({
+        mcpServers: { atlassian: { command: "npx" } },
+        strictMcpConfig: true,
+        outputFormat
+      });
+    });
+
+    test("leaves strictMcpConfig unset when no MCP servers are passed", async () => {
+      mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
+
+      await runAgent("task");
+
+      expect(queryOptions()).not.toHaveProperty("strictMcpConfig");
+      expect(queryOptions()).not.toHaveProperty("mcpServers");
+    });
+
+    test("returns the result message's structured_output", async () => {
+      mockedQuery.mockReturnValue(
+        streamOf([resultMessage({ structured_output: { status: "completed", summary: "ok" } })]) as never
+      );
+
+      const result = await runAgent("task", { outputFormat: { type: "json_schema", schema: {} } });
+
+      expect(result.structuredOutput).toEqual({ status: "completed", summary: "ok" });
+    });
+
+    test.each(["failed", "needs-auth", "disabled"])(
+      "aborts at session init when a required MCP server reports %s",
+      async (status) => {
+        mockedQuery.mockReturnValue(streamOf([initMessage([{ name: "atlassian", status }]), resultMessage()]) as never);
+
+        const result = await runAgent("task", { mcpServers: { atlassian: { command: "npx" } } });
+
+        expect(result.succeeded).toBe(false);
+        expect(result.finalMessage).toContain(`atlassian (${status})`);
+        expect(mockedLog).toHaveBeenCalledWith("required_mcp_unavailable", expect.anything());
+      }
+    );
+
+    test("aborts when a required MCP server is absent from the init message", async () => {
+      mockedQuery.mockReturnValue(streamOf([initMessage([]), resultMessage()]) as never);
+
+      const result = await runAgent("task", { mcpServers: { atlassian: { command: "npx" } } });
+
+      expect(result.succeeded).toBe(false);
+      expect(result.finalMessage).toContain("atlassian (missing)");
+    });
+
+    test("continues when a required MCP server is still pending at init", async () => {
+      mockedQuery.mockReturnValue(
+        streamOf([initMessage([{ name: "atlassian", status: "pending" }]), resultMessage()]) as never
+      );
+
+      const result = await runAgent("task", { mcpServers: { atlassian: { command: "npx" } } });
+
+      expect(result.succeeded).toBe(true);
+    });
+  });
 });

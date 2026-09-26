@@ -1,9 +1,9 @@
-import { query } from "@anthropic-ai/claude-agent-sdk";
+import { type McpServerConfig, type OutputFormat, query } from "@anthropic-ai/claude-agent-sdk";
 import { env } from "~/platform/env";
 import { log } from "~/platform/logger";
 import { SZUMRAK_VERSION } from "~/platform/version";
 import { resolveAgentAuth } from "./agent-auth";
-import { loadAgentConfig } from "./agent-config";
+import { type AgentPermissions, loadAgentConfig } from "./agent-config";
 import { ASK_MODE_INSTRUCTIONS } from "./ask-instructions";
 import {
   COMMIT_BLOCK_PATTERN,
@@ -26,10 +26,37 @@ export interface AgentRunResult {
   commitMetadata?: CommitMetadata;
   numTurns?: number;
   loopDetected?: { toolName: string; input: Record<string, unknown>; occurrences: number };
+  /** The SDK's `structured_output`, present only when `RunAgentOptions.outputFormat` was set. */
+  structuredOutput?: unknown;
 }
 
+/**
+ * Per-run overrides a flow can layer on top of the env-driven defaults. Every
+ * field is optional and an absent field keeps today's behavior, so the
+ * runner/review-followup/ask flows pass nothing (or only `readOnly`).
+ */
 export interface RunAgentOptions {
   readOnly?: boolean;
+  /** Replaces COMMIT_METADATA_INSTRUCTIONS as the system prompt addendum of a write run. */
+  systemPromptAppend?: string;
+  model?: string;
+  maxTurns?: number;
+  maxDurationMs?: number;
+  maxBudgetUsd?: number;
+  /** Added on top of the allowlisted subprocess env from agent/agent-auth.ts. */
+  env?: Record<string, string>;
+  /** Merged into (never replacing) the target repo's agent-config.json permissions. */
+  permissions?: AgentPermissions;
+  /** Replaces agent-config.json's `skills` for this run. */
+  skills?: Array<string> | "all";
+  /**
+   * Passed with `strictMcpConfig: true`, so these are the *only* MCP servers
+   * the session gets — the target repo's `.mcp.json` is not loaded on its
+   * own. Every server listed here is required: one that reports
+   * failed/needs-auth at session init aborts the run before any real work.
+   */
+  mcpServers?: Record<string, McpServerConfig>;
+  outputFormat?: OutputFormat;
 }
 
 const READ_ONLY_ALLOWED_TOOLS = ["Read", "Grep", "Glob"];
@@ -37,6 +64,31 @@ const READ_ONLY_ALLOWED_TOOLS = ["Read", "Grep", "Glob"];
 const HOOK_SUBTYPES = new Set(["hook_started", "hook_progress", "hook_response"]);
 
 const REPEATED_ACTION_LIMIT = 3;
+
+/** MCP init statuses that mean the server will never serve tools this session. */
+const MCP_UNUSABLE_STATUSES = new Set(["failed", "needs-auth", "disabled"]);
+
+type McpServerState = { name: string; status: string };
+
+function mergeList(base: Array<string> | undefined, extra: Array<string> | undefined): Array<string> | undefined {
+  if (!base && !extra) {
+    return undefined;
+  }
+  return [...(base ?? []), ...(extra ?? [])];
+}
+
+/**
+ * The required MCP servers that can't be used, given the `mcp_servers` array
+ * of the SDK's init message. A server absent from that array is unusable too.
+ */
+function findUnusableMcpServers(
+  required: Array<string>,
+  reported: Array<McpServerState> | undefined
+): Array<McpServerState> {
+  return required
+    .map((name) => ({ name, status: reported?.find((server) => server.name === name)?.status ?? "missing" }))
+    .filter((server) => server.status === "missing" || MCP_UNUSABLE_STATUSES.has(server.status));
+}
 
 /**
  * The agent edits files through the SDK's built-in tools (Read/Edit/Grep/Glob).
@@ -72,6 +124,10 @@ export async function runAgent(task: string, options?: RunAgentOptions): Promise
 
   const readOnly = options?.readOnly ?? false;
   const auth = resolveAgentAuth();
+  const model = options?.model ?? env.AGENT_MODEL;
+  const maxTurns = options?.maxTurns ?? env.MAX_TURNS;
+  const maxDurationMs = options?.maxDurationMs ?? env.MAX_DURATION_MS;
+  const requiredMcpServers = Object.keys(options?.mcpServers ?? {});
 
   log("agent_start", {
     authMethod: auth.method,
@@ -82,29 +138,38 @@ export async function runAgent(task: string, options?: RunAgentOptions): Promise
     repo: env.REPO,
     task,
     workspacePath: env.WORKSPACE_PATH,
-    requestedModel: env.AGENT_MODEL,
-    maxTurns: env.MAX_TURNS,
-    maxDurationMs: env.MAX_DURATION_MS,
+    requestedModel: model,
+    maxTurns,
+    maxDurationMs,
+    maxBudgetUsd: options?.maxBudgetUsd,
+    mcpServers: requiredMcpServers,
+    structuredOutput: options?.outputFormat !== undefined,
     nodeVersion: process.version
   });
 
   let lastToolCallSignature: string | undefined;
   let repeatedToolCallCount = 0;
   let loopDetected: AgentRunResult["loopDetected"];
+  let unusableMcpServers: Array<McpServerState> = [];
+  let structuredOutput: unknown;
 
   const config = readOnly ? undefined : loadAgentConfig(env.WORKSPACE_PATH);
+  const skills = options?.skills ?? config?.skills;
 
   const stream = query({
     prompt: task,
     options: {
       cwd: env.WORKSPACE_PATH,
       /** Carries exactly one auth credential — see agent/agent-auth.ts. */
-      env: auth.subprocessEnv,
+      env: { ...auth.subprocessEnv, ...options?.env },
       permissionMode: readOnly ? "default" : "acceptEdits",
-      maxTurns: env.MAX_TURNS,
-      model: env.AGENT_MODEL,
-      allowedTools: readOnly ? READ_ONLY_ALLOWED_TOOLS : config?.permissions?.allow,
-      disallowedTools: readOnly ? undefined : config?.permissions?.deny,
+      maxTurns,
+      model,
+      ...(options?.maxBudgetUsd !== undefined ? { maxBudgetUsd: options.maxBudgetUsd } : {}),
+      allowedTools: readOnly
+        ? READ_ONLY_ALLOWED_TOOLS
+        : mergeList(config?.permissions?.allow, options?.permissions?.allow),
+      disallowedTools: readOnly ? undefined : mergeList(config?.permissions?.deny, options?.permissions?.deny),
       /**
        * Skills whitelisted by the target repo's agent-config.json (`"all"` or
        * a name list). Discovery happens in the target repo's own
@@ -112,7 +177,9 @@ export async function runAgent(task: string, options?: RunAgentOptions): Promise
        * each SKILL.md's name/description. Omitted entirely when the target
        * repo doesn't opt in.
        */
-      ...(config?.skills !== undefined ? { skills: config.skills } : {}),
+      ...(skills !== undefined ? { skills } : {}),
+      ...(options?.mcpServers !== undefined ? { mcpServers: options.mcpServers, strictMcpConfig: true } : {}),
+      ...(options?.outputFormat !== undefined ? { outputFormat: options.outputFormat } : {}),
       /**
        * 'project' — and only 'project': the target repo's committed
        * .claude/ directory, never the machine-local 'user'/'local' tiers
@@ -139,7 +206,7 @@ export async function runAgent(task: string, options?: RunAgentOptions): Promise
       systemPrompt: {
         type: "preset",
         preset: "claude_code",
-        append: readOnly ? ASK_MODE_INSTRUCTIONS : COMMIT_METADATA_INSTRUCTIONS,
+        append: readOnly ? ASK_MODE_INSTRUCTIONS : (options?.systemPromptAppend ?? COMMIT_METADATA_INSTRUCTIONS),
         /**
          * Strips per-run dynamic sections (cwd, git status, auto-memory
          * path) out of the system prompt and re-injects them as the first
@@ -224,6 +291,12 @@ export async function runAgent(task: string, options?: RunAgentOptions): Promise
         mcpServers: message.mcp_servers,
         sessionId: message.session_id
       });
+
+      unusableMcpServers = findUnusableMcpServers(requiredMcpServers, message.mcp_servers);
+      if (unusableMcpServers.length > 0) {
+        log("required_mcp_unavailable", { servers: unusableMcpServers });
+        break;
+      }
     } else {
       log("agent_message", { type: message.type, ...("subtype" in message ? { subtype: message.subtype } : {}) });
     }
@@ -232,6 +305,9 @@ export async function runAgent(task: string, options?: RunAgentOptions): Promise
       succeeded = message.subtype === "success" && !message.is_error;
       totalCostUsd = message.total_cost_usd;
       numTurns = message.num_turns;
+      if ("structured_output" in message) {
+        structuredOutput = message.structured_output;
+      }
       if ("result" in message && typeof message.result === "string") {
         finalMessage = message.result;
       }
@@ -244,10 +320,17 @@ export async function runAgent(task: string, options?: RunAgentOptions): Promise
       });
     }
 
-    if (Date.now() - startedAt > env.MAX_DURATION_MS) {
+    if (Date.now() - startedAt > maxDurationMs) {
       log("agent_timeout", { elapsedMs: Date.now() - startedAt });
       throw new Error("Agent exceeded max duration");
     }
+  }
+
+  if (unusableMcpServers.length > 0) {
+    succeeded = false;
+    finalMessage = `Required MCP server(s) unavailable, aborted before the agent did any work: ${unusableMcpServers
+      .map((server) => `${server.name} (${server.status})`)
+      .join(", ")}.`;
   }
 
   if (loopDetected) {
@@ -264,5 +347,14 @@ export async function runAgent(task: string, options?: RunAgentOptions): Promise
 
   log("agent_end", { toolCallCount: toolCalls.length, succeeded, finalMessage: displayMessage, commitMetadata });
 
-  return { toolCalls, finalMessage: displayMessage, succeeded, totalCostUsd, commitMetadata, numTurns, loopDetected };
+  return {
+    toolCalls,
+    finalMessage: displayMessage,
+    succeeded,
+    totalCostUsd,
+    commitMetadata,
+    numTurns,
+    loopDetected,
+    structuredOutput
+  };
 }
