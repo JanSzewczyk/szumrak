@@ -68,7 +68,7 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
 - **`src/flows/`** — one folder per orchestration flow. `flows/registry.ts` exports
   `flowRegistry: Record<Mode, (ctx) => Promise<FlowResult>>`, the only place `index.ts` dispatches
   through; because it's typed as `Record<Mode, ...>`, adding a value to `Mode` without a matching
-  registry entry is a compile error. `flows/types.ts` holds the shared `FlowResult` contract
+  registry entry is a compile error. `types/flow-result.ts` holds the shared `FlowResult` contract
   (`{ succeeded: boolean }`) every flow returns.
 - **`src/agent/`** and **`src/github/`** are reusable building blocks every flow composes — the
   Claude Agent SDK wrapper and the git/GitHub integration, respectively — not flow-specific logic.

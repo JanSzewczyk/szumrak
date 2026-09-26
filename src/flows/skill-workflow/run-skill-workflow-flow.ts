@@ -13,8 +13,8 @@ import { appendRunInfo } from "~/github/run-info";
 import { env } from "~/platform/env";
 import { log, registerSecretValues } from "~/platform/logger";
 import { writeStepSummary } from "~/platform/summary";
+import type { FlowResult } from "~/types/flow-result";
 import { GitHubAccess, type ScopedTokenPermissions } from "~/types/github-access";
-import type { FlowResult } from "../types";
 import { resolveSkillWorkflowInputs, resolveSkillWorkflowSecrets } from "./inputs";
 import {
   buildSkillWorkflowInstructions,
