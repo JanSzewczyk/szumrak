@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
-import { SkillWorkflowConfigError } from "./manifest";
+import { MCP_JSON_REFERENCE, SkillWorkflowConfigError, type SkillWorkflowManifest } from "./manifest";
 
 /** `${VAR}` or `${VAR:-default}`, the same expansion syntax Claude Code supports in `.mcp.json`. */
 const VARIABLE_PATTERN = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g;
@@ -42,13 +42,32 @@ function isServerConfig(value: unknown): value is McpServerConfig {
   return typeof config.command === "string" || typeof config.url === "string";
 }
 
+function loadMcpJsonServers(workspacePath: string, referenced: Array<string>): Record<string, unknown> {
+  const mcpPath = join(workspacePath, ".mcp.json");
+  if (!existsSync(mcpPath)) {
+    throw new SkillWorkflowConfigError(
+      `MCP servers ${referenced.join(", ")} are taken from .mcp.json, but the file is missing — define them inline in the manifest instead`
+    );
+  }
+  try {
+    const parsed = JSON.parse(readFileSync(mcpPath, "utf-8")) as { mcpServers?: Record<string, unknown> };
+    return parsed.mcpServers ?? {};
+  } catch (err) {
+    throw new SkillWorkflowConfigError(`.mcp.json is not valid JSON: ${String(err)}`);
+  }
+}
+
 /**
- * Picks the named servers out of the target repo's `.mcp.json` — the same file
- * a developer's interactive Claude Code session uses — and expands `${VAR}`
- * references from the skill workflow's declared secrets only. Neither the
- * host environment nor undeclared variables are consulted: a secret reaches
- * an MCP server only if the manifest declares it and the server's config
- * asks for it.
+ * Resolves the manifest's `mcpServers`: inline definitions are used as they
+ * are, `".mcp.json"` entries are picked out of the target repo's `.mcp.json`
+ * (the same file a developer's interactive session uses). A developer's
+ * global/user-level MCP config is never consulted — a CI run doesn't have it,
+ * and machine-local settings must not steer an unattended run.
+ *
+ * `${VAR}` references are expanded from the skill workflow's declared secrets
+ * only. Neither the host environment nor undeclared variables are consulted:
+ * a secret reaches an MCP server only if the manifest declares it and the
+ * server's config asks for it.
  *
  * The result goes to the SDK with `strictMcpConfig: true` (agent/run-agent.ts),
  * so secrets land in each server's own `env`/`headers` instead of the agent's
@@ -56,31 +75,15 @@ function isServerConfig(value: unknown): value is McpServerConfig {
  */
 export function resolveMcpServers(
   workspacePath: string,
-  names: Array<string>,
+  definitions: SkillWorkflowManifest["mcpServers"],
   secrets: Record<string, string>
 ): Record<string, McpServerConfig> {
-  if (names.length === 0) {
-    return {};
-  }
-
-  const mcpPath = join(workspacePath, ".mcp.json");
-  if (!existsSync(mcpPath)) {
-    throw new SkillWorkflowConfigError(
-      `The skill workflow requires MCP servers (${names.join(", ")}) but .mcp.json is missing`
-    );
-  }
-
-  let declared: Record<string, unknown>;
-  try {
-    const parsed = JSON.parse(readFileSync(mcpPath, "utf-8")) as { mcpServers?: Record<string, unknown> };
-    declared = parsed.mcpServers ?? {};
-  } catch (err) {
-    throw new SkillWorkflowConfigError(`.mcp.json is not valid JSON: ${String(err)}`);
-  }
+  const referenced = Object.keys(definitions).filter((name) => definitions[name] === MCP_JSON_REFERENCE);
+  const mcpJsonServers = referenced.length > 0 ? loadMcpJsonServers(workspacePath, referenced) : {};
 
   const servers: Record<string, McpServerConfig> = {};
-  for (const name of names) {
-    const config = declared[name];
+  for (const [name, definition] of Object.entries(definitions)) {
+    const config = definition === MCP_JSON_REFERENCE ? mcpJsonServers[name] : definition;
     if (!isServerConfig(config)) {
       throw new SkillWorkflowConfigError(`MCP server "${name}" is not defined in .mcp.json`);
     }

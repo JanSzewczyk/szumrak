@@ -3,15 +3,6 @@ import { join } from "node:path";
 import { z } from "zod";
 import { GitHubAccess } from "~/types/github-access";
 
-export const SkillWorkflowDelivery = {
-  /** The skill itself creates the branch, commits, pushes and opens the PR (e.g. via `gh`). */
-  AGENT: "agent",
-  /** The skill only edits files; Szumrak commits, pushes and opens the PR afterwards, like MODE=runner. */
-  ENGINE: "engine"
-} as const;
-
-export type SkillWorkflowDelivery = (typeof SkillWorkflowDelivery)[keyof typeof SkillWorkflowDelivery];
-
 /** Relative to the target repo root. */
 const SKILL_WORKFLOWS_DIR = join(".claude", "szumrak", "skill-workflows");
 
@@ -56,6 +47,37 @@ const SkillWorkflowInputDefinition = z.strictObject({
 
 const GitHubAccessSchema = z.enum([GitHubAccess.READ, GitHubAccess.WRITE]);
 
+/** Value of a `mcpServers` entry that takes the server's definition from the target repo's `.mcp.json`. */
+export const MCP_JSON_REFERENCE = ".mcp.json";
+
+const StringMap = z.record(z.string(), z.string());
+
+/**
+ * An MCP server defined inline in the manifest, for repos without a `.mcp.json`
+ * (or when the workflow needs a server developers don't use interactively).
+ * The same shapes as `.mcp.json` entries — process (stdio) or remote (http/sse)
+ * servers; `${VAR}` in any string is expanded from declared secrets only.
+ */
+const McpTransport = {
+  STDIO: "stdio",
+  HTTP: "http",
+  SSE: "sse"
+} as const;
+
+const InlineMcpServerSchema = z.union([
+  z.strictObject({
+    type: z.literal(McpTransport.STDIO).optional(),
+    command: z.string().min(1),
+    args: z.array(z.string()).optional(),
+    env: StringMap.optional()
+  }),
+  z.strictObject({
+    type: z.enum([McpTransport.HTTP, McpTransport.SSE]),
+    url: z.string().min(1),
+    headers: StringMap.optional()
+  })
+]);
+
 /**
  * `.claude/szumrak/skill-workflows/<name>.json` in the target repo. JSON — like
  * agent-config.json — so the engine needs no YAML parser and the reusable
@@ -73,7 +95,6 @@ const SkillWorkflowManifestSchema = z
     /** Argument string for the skill; `{{inputs.<name>}}` placeholders are filled from the inputs. */
     args: z.string().max(2000).optional(),
     inputs: z.record(z.string().regex(/^[a-z][a-z0-9_]*$/), SkillWorkflowInputDefinition).default({}),
-    delivery: z.enum([SkillWorkflowDelivery.AGENT, SkillWorkflowDelivery.ENGINE]),
     model: z.string().min(1).optional(),
     maxTurns: z.number().int().positive().max(500).optional(),
     maxDurationMinutes: z.number().int().positive().max(360).optional(),
@@ -88,8 +109,22 @@ const SkillWorkflowManifestSchema = z
      * Bash — prefer MCP servers, which get secrets only via `${VAR}` in `.mcp.json`.
      */
     agentEnv: z.array(SECRET_NAME).default([]),
-    /** Server names from the target repo's `.mcp.json`; each one is required to connect. */
-    mcpServers: z.array(z.string().min(1)).default([]),
+    /**
+     * Every MCP server the run gets, each one required to connect. The value
+     * is either an inline definition or `".mcp.json"` to take that server's
+     * definition from the target repo's `.mcp.json`.
+     */
+    mcpServers: z
+      .record(z.string().min(1), z.union([z.literal(MCP_JSON_REFERENCE), InlineMcpServerSchema]))
+      .default({}),
+    /**
+     * Shell commands run before the agent starts — install the CLIs the skill
+     * needs (`apt-get install -y jq`, `npm install -g @acme/cli`). They run in
+     * the workspace with the same allowlisted environment as the agent but
+     * without any secrets, and they come only from the manifest: inputs are
+     * never interpolated into them.
+     */
+    setup: z.array(z.string().min(1)).default([]),
     github: z
       .strictObject({
         permissions: z.strictObject({

@@ -10,14 +10,15 @@
       "maxLength": 32
     }
   },
-  "delivery": "agent",
   "model": "sonnet",
   "maxTurns": 80,
   "maxDurationMinutes": 35,
   "maxBudgetUsd": 5,
   "secrets": ["JIRA_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"],
   "agentEnv": [],
-  "mcpServers": ["atlassian"],
+  "mcpServers": {
+    "atlassian": ".mcp.json"
+  },
   "github": {
     "permissions": {
       "contents": "write",

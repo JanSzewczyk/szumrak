@@ -112,23 +112,24 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
 - **`Mode.SKILL_WORKFLOW`** (`MODE=skill-workflow`) — `flows/skill-workflow/run-skill-workflow-flow.ts`:
   runs a skill that lives in the target repo end to end, driven by the target repo's manifest
   `.claude/szumrak/skill-workflows/<SKILL_WORKFLOW>.json` (`flows/skill-workflow/manifest.ts`, strict
-  Zod schema). The *process* belongs to the target repo's skill; Szumrak only prepares the
-  environment the manifest declares and checks the outcome: validate `SKILL_WORKFLOW_INPUTS`
-  against the manifest's `inputs` (`inputs.ts`) and `SKILL_WORKFLOW_SECRETS` against its `secrets`
-  (every value `registerSecretValues`'d for log redaction) → check the entry skill's `SKILL.md`
-  exists → pick the manifest's `mcpServers` out of the repo's `.mcp.json`, expanding `${VAR}` from
-  declared secrets only (`mcp-servers.ts`) → dedup via a hashed HTML-comment marker on open PRs →
-  mint a repo- and permission-scoped installation token for the agent
-  (`createScopedInstallationToken`, exported as `GH_TOKEN`/`GITHUB_TOKEN` and set on the git
-  remote) → `runAgent` with a per-run profile (`systemPromptAppend` from `instructions.ts`,
-  model/turn/duration/budget limits, `agentEnv` secrets, merged permissions plus Szumrak's own
-  deny list, skills with the entry skill added, `mcpServers` in strict mode, and a JSON-schema
-  `outputFormat`) → parse the structured result (`completed`/`blocked`). `delivery: "agent"` means
-  the skill itself branches/commits/pushes/opens the PR — Szumrak then checks the reported PR
-  belongs to this repo on a non-default branch and adds the `ai-generated` label, run-info table
-  and dedup marker. `delivery: "engine"` means the skill only edits files and the flow runs the
-  runner-style `verify` gate + `commitAndOpenPR` itself, with a `Task:` body review-followup can
-  parse. In CI it runs only through the `szumrak-skill-workflow.yml` template / `_skill-workflow.yml`
+  Zod schema). The *whole process* belongs to the target repo's skill — including whether it
+  branches, commits, opens a PR or produces nothing outside the session. Szumrak is purely the
+  orchestrator: it never commits, opens/labels PRs, runs `verify` or dedups in this flow, and the
+  flow has no relation to review-followup. It prepares the environment the manifest declares and
+  reports the outcome: validate `SKILL_WORKFLOW_INPUTS` against the manifest's `inputs`
+  (`inputs.ts`) and `SKILL_WORKFLOW_SECRETS` against its `secrets` (every value
+  `registerSecretValues`'d for log redaction) → check the entry skill's `SKILL.md` exists →
+  resolve `mcpServers` (each entry inline, or `".mcp.json"` to take it from the repo's
+  `.mcp.json` — never a user's global MCP config), expanding `${VAR}` from declared secrets only
+  (`mcp-servers.ts`) → run the manifest's `setup` shell commands (`setup.ts`, installs CLIs;
+  allowlisted env, no secrets, no input interpolation) → only if the manifest declares
+  `github.permissions`, mint a repo- and permission-scoped installation token for the agent
+  (`createScopedInstallationToken`, exported as `GH_TOKEN`/`GITHUB_TOKEN`, set on the git remote
+  with `contents: write`) → `runAgent` with a per-run profile (`systemPromptAppend` from
+  `instructions.ts`, model/turn/duration/budget limits, `agentEnv` secrets, merged permissions
+  plus Szumrak's own deny list, skills with the entry skill added, `mcpServers` in strict mode,
+  and a JSON-schema `outputFormat`) → parse the structured result (`completed`/`blocked` +
+  summary) into the step summary. In CI it runs only through the `szumrak-skill-workflow.yml` template / `_skill-workflow.yml`
   reusable workflow, which checks out the **default branch** and forwards only the manifest's
   declared secrets (from `secrets: inherit`) as `SKILL_WORKFLOW_SECRETS`.
 
@@ -179,9 +180,9 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   commit type, not an always-`chore` placeholder.
 - **`github/pull-requests.ts`** does branch → commit → push → PR create (via the Octokit client
   from `github/client.ts`) → add `ai-generated` label. In runner/review-followup the agent itself
-  never runs git; all git/PR work happens here, in Node, *after* the run. The one exception is a
-  skill workflow with `delivery: "agent"`, where the target repo's skill delivers the PR itself
-  with a scoped token (see `Mode.SKILL_WORKFLOW` above). Branch name and commit message are driven by the
+  never runs git; all git/PR work happens here, in Node, *after* the run. The skill-workflow flow
+  never uses this module: there the target repo's skill does any git/PR work itself with a
+  scoped token (see `Mode.SKILL_WORKFLOW` above). Branch name and commit message are driven by the
   agent's own self-reported `CommitMetadata` (type/scope/subject/branch) when present — see above —
   falling back to `chore(agent): <task text>` when it's missing or unparsable.
 - **`github/repo.ts`** exports `parseRepo` (shared `REPO` → `{owner, repo}` split, used by
