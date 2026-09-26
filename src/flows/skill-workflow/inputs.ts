@@ -1,4 +1,24 @@
-import { SkillWorkflowConfigError, type SkillWorkflowManifest } from "./manifest";
+import { z } from "zod";
+import { SkillWorkflowConfigError } from "./errors";
+
+function isValidRegExp(source: string): boolean {
+  try {
+    new RegExp(source);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** One entry of a manifest's `inputs`. */
+export const SkillWorkflowInputDefinition = z.strictObject({
+  description: z.string().optional(),
+  required: z.boolean().default(false),
+  /** Matched against the whole value (implicitly anchored). */
+  pattern: z.string().refine(isValidRegExp, "pattern must be a valid regular expression").optional(),
+  maxLength: z.number().int().positive().max(10_000).default(500)
+});
+type SkillWorkflowInputDefinition = z.infer<typeof SkillWorkflowInputDefinition>;
 
 function parseJsonObject(raw: string, label: string): Record<string, unknown> {
   let parsed: unknown;
@@ -22,18 +42,21 @@ function parseJsonObject(raw: string, label: string): Record<string, unknown> {
  * An empty string counts as "not given": `workflow_dispatch` sends `""` for
  * every optional input the user left blank.
  */
-export function resolveSkillWorkflowInputs(manifest: SkillWorkflowManifest, rawInputs: string): Record<string, string> {
+export function resolveSkillWorkflowInputs(
+  definitions: Record<string, SkillWorkflowInputDefinition>,
+  rawInputs: string
+): Record<string, string> {
   const given = parseJsonObject(rawInputs, "SKILL_WORKFLOW_INPUTS");
   const errors: Array<string> = [];
   const resolved: Record<string, string> = {};
 
   for (const name of Object.keys(given)) {
-    if (!(name in manifest.inputs)) {
+    if (!(name in definitions)) {
       errors.push(`unknown input "${name}"`);
     }
   }
 
-  for (const [name, definition] of Object.entries(manifest.inputs)) {
+  for (const [name, definition] of Object.entries(definitions)) {
     const value = given[name];
     if (value === undefined || value === null || value === "") {
       if (definition.required) {
@@ -70,15 +93,15 @@ export function resolveSkillWorkflowInputs(manifest: SkillWorkflowManifest, rawI
  * values. Only declared secrets are returned — anything extra is dropped.
  */
 export function resolveSkillWorkflowSecrets(
-  manifest: SkillWorkflowManifest,
+  declared: Array<string>,
   rawSecrets: string | undefined
 ): Record<string, string> {
   const given = rawSecrets ? parseJsonObject(rawSecrets, "SKILL_WORKFLOW_SECRETS") : {};
-  const missing = manifest.secrets.filter((name) => typeof given[name] !== "string" || given[name] === "");
+  const missing = declared.filter((name) => typeof given[name] !== "string" || given[name] === "");
   if (missing.length > 0) {
     throw new SkillWorkflowConfigError(
       `Missing secrets declared by the skill workflow: ${missing.join(", ")} — add them under the target repo's Settings → Secrets and variables → Actions`
     );
   }
-  return Object.fromEntries(manifest.secrets.map((name) => [name, given[name] as string]));
+  return Object.fromEntries(declared.map((name) => [name, given[name] as string]));
 }

@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { log } from "~/platform/logger";
+import { TargetRepoPath } from "~/platform/target-repo-layout";
 
 export interface AgentPermissions {
   allow?: Array<string>;
@@ -66,7 +67,7 @@ function asSkills(value: unknown): Array<string> | "all" | undefined {
  * no skills, no verify commands" — it never throws.
  */
 export function loadAgentConfig(workspacePath: string): AgentConfig {
-  const configPath = join(workspacePath, ".claude", "agent-config.json");
+  const configPath = join(workspacePath, TargetRepoPath.AGENT_CONFIG);
   if (!existsSync(configPath)) {
     return {};
   }

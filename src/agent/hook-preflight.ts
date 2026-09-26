@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { log } from "~/platform/logger";
+import { TargetRepoPath } from "~/platform/target-repo-layout";
 
 export interface HookHealthReport {
   total: number;
@@ -33,7 +34,7 @@ function isCommandCheckOk(command: string): boolean {
  * before the agent's session — never runs the command for real.
  */
 export function checkHookHealth(workspacePath: string): HookHealthReport {
-  const settingsPath = join(workspacePath, ".claude", "settings.json");
+  const settingsPath = join(workspacePath, TargetRepoPath.SETTINGS);
   if (!existsSync(settingsPath)) {
     return { total: 0, failed: [] };
   }

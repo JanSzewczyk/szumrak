@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
-import { runSkillWorkflowSetup, SkillWorkflowSetupError } from "~/flows/skill-workflow/setup";
+import { SkillWorkflowSetupError } from "~/flows/skill-workflow/errors";
+import { runSkillWorkflowSetup } from "~/flows/skill-workflow/setup";
 
 vi.mock("node:child_process", () => ({
   execFileSync: vi.fn()

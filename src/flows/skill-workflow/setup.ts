@@ -1,12 +1,9 @@
 import { execFileSync } from "node:child_process";
 import { passthroughEnv } from "~/agent/agent-auth";
 import { log } from "~/platform/logger";
+import { SkillWorkflowSetupError } from "./errors";
 
 const SETUP_COMMAND_TIMEOUT_MS = 10 * 60 * 1000;
-
-export class SkillWorkflowSetupError extends Error {
-  override name = "SkillWorkflowSetupError";
-}
 
 function outputOf(err: unknown): string {
   const { stdout, stderr } = err as { stdout?: Buffer | string; stderr?: Buffer | string };

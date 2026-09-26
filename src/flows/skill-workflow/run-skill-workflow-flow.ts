@@ -8,8 +8,10 @@ import { parseRepo } from "~/github/repo";
 import { env } from "~/platform/env";
 import { log, registerSecretValues } from "~/platform/logger";
 import { writeStepSummary } from "~/platform/summary";
+import { skillFilePath, TargetRepoPath } from "~/platform/target-repo-layout";
 import type { FlowResult } from "~/types/flow-result";
 import { GitHubAccess } from "~/types/github-access";
+import { SkillWorkflowConfigError, SkillWorkflowSetupError } from "./errors";
 import { resolveSkillWorkflowInputs, resolveSkillWorkflowSecrets } from "./inputs";
 import {
   buildSkillWorkflowInstructions,
@@ -18,14 +20,11 @@ import {
   SKILL_WORKFLOW_OUTPUT_FORMAT,
   SkillWorkflowStatus
 } from "./instructions";
-import {
-  loadSkillWorkflowManifest,
-  renderSkillArgs,
-  SkillWorkflowConfigError,
-  type SkillWorkflowManifest
-} from "./manifest";
+import { loadSkillWorkflowManifest } from "./manifest";
+import type { SkillWorkflowManifest } from "./manifest-schema";
 import { resolveMcpServers } from "./mcp-servers";
-import { runSkillWorkflowSetup, SkillWorkflowSetupError } from "./setup";
+import { runSkillWorkflowSetup } from "./setup";
+import { renderSkillArgs } from "./skill-args";
 
 export interface SkillWorkflowFlowInput {
   name: string;
@@ -38,10 +37,10 @@ export interface SkillWorkflowFlowInput {
  * to rewrite the configuration that decides what it's allowed to do.
  */
 const PROTECTED_CONFIG_DENY = [
-  "Edit(.claude/agent-config.json)",
-  "Write(.claude/agent-config.json)",
-  "Edit(.claude/szumrak/**)",
-  "Write(.claude/szumrak/**)"
+  `Edit(${TargetRepoPath.AGENT_CONFIG})`,
+  `Write(${TargetRepoPath.AGENT_CONFIG})`,
+  `Edit(${TargetRepoPath.SZUMRAK_DIR}/**)`,
+  `Write(${TargetRepoPath.SZUMRAK_DIR}/**)`
 ];
 
 /**
@@ -117,14 +116,14 @@ export async function runSkillWorkflowFlow({
   let mcpServers: ReturnType<typeof resolveMcpServers>;
   try {
     manifest = loadSkillWorkflowManifest(env.WORKSPACE_PATH, name);
-    inputs = resolveSkillWorkflowInputs(manifest, rawInputs);
-    secrets = resolveSkillWorkflowSecrets(manifest, rawSecrets);
+    inputs = resolveSkillWorkflowInputs(manifest.inputs, rawInputs);
+    secrets = resolveSkillWorkflowSecrets(manifest.secrets, rawSecrets);
     registerSecretValues(Object.values(secrets));
-    if (!existsSync(join(env.WORKSPACE_PATH, ".claude", "skills", manifest.skill, "SKILL.md"))) {
-      throw new SkillWorkflowConfigError(
-        `Skill "${manifest.skill}" not found at .claude/skills/${manifest.skill}/SKILL.md`
-      );
+
+    if (!existsSync(join(env.WORKSPACE_PATH, skillFilePath(manifest.skill)))) {
+      throw new SkillWorkflowConfigError(`Skill "${manifest.skill}" not found at ${skillFilePath(manifest.skill)}`);
     }
+
     mcpServers = resolveMcpServers(env.WORKSPACE_PATH, manifest.mcpServers, secrets);
   } catch (err) {
     if (err instanceof SkillWorkflowConfigError) {

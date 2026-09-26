@@ -1,6 +1,7 @@
 import { type McpServerConfig, type OutputFormat, query } from "@anthropic-ai/claude-agent-sdk";
 import { env } from "~/platform/env";
 import { log } from "~/platform/logger";
+import { TargetRepoPath } from "~/platform/target-repo-layout";
 import { SZUMRAK_VERSION } from "~/platform/version";
 import { resolveAgentAuth } from "./agent-auth";
 import { type AgentPermissions, loadAgentConfig } from "./agent-config";
@@ -106,8 +107,7 @@ export async function runAgent(task: string, options?: RunAgentOptions): Promise
     log("hook_preflight_all_failed", { failed: hookHealth.failed });
     return {
       toolCalls: [],
-      finalMessage:
-        "Every hook command in this repo's .claude/settings.json failed a syntax pre-flight check — aborting before the agent starts.",
+      finalMessage: `Every hook command in this repo's ${TargetRepoPath.SETTINGS} failed a syntax pre-flight check — aborting before the agent starts.`,
       succeeded: false
     };
   }

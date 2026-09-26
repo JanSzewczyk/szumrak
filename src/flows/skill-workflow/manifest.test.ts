@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadSkillWorkflowManifest, renderSkillArgs, SkillWorkflowConfigError } from "~/flows/skill-workflow/manifest";
+import { SkillWorkflowConfigError } from "~/flows/skill-workflow/errors";
+import { loadSkillWorkflowManifest } from "~/flows/skill-workflow/manifest";
 
 vi.mock("node:fs", () => ({
   existsSync: vi.fn(),
@@ -77,17 +78,5 @@ describe("loadSkillWorkflowManifest", () => {
     manifestOnDisk(manifest);
 
     expect(() => loadSkillWorkflowManifest("/workspace", "do-ticket")).toThrow(SkillWorkflowConfigError);
-  });
-});
-
-describe("renderSkillArgs", () => {
-  test("fills declared placeholders and tolerates whitespace inside the braces", () => {
-    expect(renderSkillArgs("{{inputs.ticket}} --hint {{ inputs.hint }}", { ticket: "PROJ-1", hint: "x" })).toBe(
-      "PROJ-1 --hint x"
-    );
-  });
-
-  test("renders an absent optional input as an empty string", () => {
-    expect(renderSkillArgs("{{inputs.ticket}} {{inputs.hint}}", { ticket: "PROJ-1" })).toBe("PROJ-1");
   });
 });

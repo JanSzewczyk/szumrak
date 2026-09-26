@@ -2,13 +2,15 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runAgent } from "~/agent/run-agent";
+import { SkillWorkflowSetupError } from "~/flows/skill-workflow/errors";
 import { SkillWorkflowStatus } from "~/flows/skill-workflow/instructions";
 import { runSkillWorkflowFlow, withEntrySkill } from "~/flows/skill-workflow/run-skill-workflow-flow";
-import { runSkillWorkflowSetup, SkillWorkflowSetupError } from "~/flows/skill-workflow/setup";
+import { runSkillWorkflowSetup } from "~/flows/skill-workflow/setup";
 import { createScopedInstallationToken } from "~/github/client";
 import { configureGitRemoteAuth } from "~/github/git-operations";
 import { registerSecretValues } from "~/platform/logger";
 import { writeStepSummary } from "~/platform/summary";
+import { TargetRepoPath } from "~/platform/target-repo-layout";
 import { agentRunResultBuilder } from "~/test/builders/agent-run-result.builder";
 import { GitHubAccess } from "~/types/github-access";
 
@@ -21,8 +23,7 @@ vi.mock("~/agent/run-agent", () => ({
   runAgent: vi.fn()
 }));
 
-vi.mock("~/flows/skill-workflow/setup", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("~/flows/skill-workflow/setup")>()),
+vi.mock("~/flows/skill-workflow/setup", () => ({
   runSkillWorkflowSetup: vi.fn()
 }));
 
@@ -281,6 +282,19 @@ describe("runSkillWorkflowFlow", () => {
           "Bash(git push --force*)",
           "Bash(gh pr merge*)"
         ])
+      );
+    });
+
+    test("denies both Edit and Write on every configuration path of the target repo layout", async () => {
+      await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
+
+      expect(mockedRunAgent.mock.calls[0][1]?.permissions?.deny).toEqual(
+        expect.arrayContaining(
+          [TargetRepoPath.AGENT_CONFIG, `${TargetRepoPath.SZUMRAK_DIR}/**`].flatMap((path) => [
+            `Edit(${path})`,
+            `Write(${path})`
+          ])
+        )
       );
     });
 
