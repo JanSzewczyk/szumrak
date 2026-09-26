@@ -1,0 +1,37 @@
+{
+  "description": "Fetches a Jira ticket, implements it and opens a pull request — all driven by the do-ticket skill",
+  "skill": "do-ticket",
+  "args": "{{inputs.ticket}}",
+  "inputs": {
+    "ticket": {
+      "description": "Jira issue key",
+      "required": true,
+      "pattern": "[A-Z][A-Z0-9]+-\\d+",
+      "maxLength": 32
+    }
+  },
+  "delivery": "agent",
+  "model": "sonnet",
+  "maxTurns": 80,
+  "maxDurationMinutes": 35,
+  "maxBudgetUsd": 5,
+  "secrets": ["JIRA_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"],
+  "agentEnv": [],
+  "mcpServers": ["atlassian"],
+  "github": {
+    "permissions": {
+      "contents": "write",
+      "pull_requests": "write"
+    }
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git checkout -b *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push -u origin *)",
+      "Bash(gh pr create *)",
+      "mcp__atlassian__*"
+    ]
+  }
+}

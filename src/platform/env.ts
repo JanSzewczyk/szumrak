@@ -44,6 +44,26 @@ const AskModeEnv = z.object({
 });
 
 /**
+ * The name doubles as a path segment (`.claude/szumrak/skill-workflows/<name>.json`),
+ * so it is restricted to a slug — no `/`, `..` or dots that could escape that
+ * directory.
+ */
+const SKILL_WORKFLOW_NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+
+const SkillWorkflowModeEnv = z.object({
+  MODE: z.literal(Mode.SKILL_WORKFLOW),
+  SKILL_WORKFLOW: z
+    .string()
+    .regex(SKILL_WORKFLOW_NAME_PATTERN, "SKILL_WORKFLOW must be a lowercase slug (a-z, 0-9, '-')")
+    .describe("Name of the target repo's skill workflow manifest to run"),
+  SKILL_WORKFLOW_INPUTS: z
+    .string()
+    .min(1)
+    .default("{}")
+    .describe("JSON object with the skill workflow's inputs, validated against its manifest")
+});
+
+/**
  * z.discriminatedUnion requires an exact literal match on MODE — it can't
  * fall back to a `.default()` declared on a schema field the way a flat
  * z.enum(...).default(...) could, so the default is applied here, directly
@@ -94,9 +114,9 @@ export const env = createEnv({
       .optional()
       .describe("Natural-language task for the agent to perform; required when MODE=runner"),
     MODE: z
-      .enum([Mode.RUNNER, Mode.REVIEW_FOLLOWUP, Mode.ASK])
+      .enum([Mode.RUNNER, Mode.REVIEW_FOLLOWUP, Mode.ASK, Mode.SKILL_WORKFLOW])
       .describe(
-        "runner: run TASK and open a new PR. review-followup: address review feedback on PR_NUMBER's existing branch instead. ask: answer QUESTION read-only, no PR."
+        "runner: run TASK and open a new PR. review-followup: address review feedback on PR_NUMBER's existing branch instead. ask: answer QUESTION read-only, no PR. skill-workflow: run the target repo's SKILL_WORKFLOW manifest end to end."
       ),
     PR_NUMBER: z.coerce
       .number()
@@ -115,6 +135,28 @@ export const env = createEnv({
       .max(1000)
       .optional()
       .describe("Question for the agent to answer about the target repository; required when MODE=ask"),
+    SKILL_WORKFLOW: z
+      .string()
+      .regex(SKILL_WORKFLOW_NAME_PATTERN)
+      .optional()
+      .describe("Skill workflow manifest name; required when MODE=skill-workflow"),
+    SKILL_WORKFLOW_INPUTS: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("JSON object of skill workflow inputs; only read when MODE=skill-workflow"),
+    /**
+     * One JSON variable instead of one env var per secret: the secret names
+     * are declared by the target repo's manifest, not known to this schema,
+     * and a single declared variable keeps the "read every env var through
+     * `env`" invariant intact. The reusable workflow fills it with only the
+     * secrets the manifest declares.
+     */
+    SKILL_WORKFLOW_SECRETS: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("JSON object of the secrets a skill workflow manifest declares (name → value)"),
     WORKSPACE_PATH: z
       .string()
       .min(1)
@@ -213,10 +255,11 @@ export const env = createEnv({
    * time, before the agent burns an API turn on a run that can't ever push.
    */
   createFinalSchema: (shape) => {
-    const { MODE, TASK, PR_NUMBER, REVIEW_FEEDBACK, QUESTION, ...common } = shape;
+    const { MODE, TASK, PR_NUMBER, REVIEW_FEEDBACK, QUESTION, SKILL_WORKFLOW, SKILL_WORKFLOW_INPUTS, ...common } =
+      shape;
     return z
       .object(common)
-      .and(z.discriminatedUnion("MODE", [RunnerModeEnv, ReviewFollowUpModeEnv, AskModeEnv]))
+      .and(z.discriminatedUnion("MODE", [RunnerModeEnv, ReviewFollowUpModeEnv, AskModeEnv, SkillWorkflowModeEnv]))
       .superRefine((env, ctx) => {
         /** Checked before the DRY_RUN early return: a dry run still calls the model. */
         if (!env.CLAUDE_CODE_OAUTH_TOKEN && !env.ANTHROPIC_API_KEY) {
