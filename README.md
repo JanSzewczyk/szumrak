@@ -42,7 +42,7 @@ to be built from source inside a target repository's own CI, rather than publish
 
 - **Skill discovery** — the agent autonomously discovers and invokes the target repo's own `.claude/skills/`, choosing when to use them based on each `SKILL.md`'s name/description; no per-task mapping to configure
 - **The target repo's own hooks run** — `settings.json` PostToolUse hooks (formatters, linters, etc.) fire during the agent's session exactly as they would in an interactive Claude Code session; Szumrak registers no hooks of its own
-- **Opt-in `agent-config.json`** — the target repo declares its own tool permissions, skill whitelist, and post-run `verify` commands in one committed file; a missing file just means "no extra restriction, no skills, no verify"
+- **Opt-in `.szumrak/config.json`** — the target repo declares its own tool permissions, skill whitelist, and post-run `verify` commands in one committed file; a missing file just means "no extra restriction, no skills, no verify"
 - **Hook lifecycle logging** — every hook the target repo runs is captured in `agent-run.jsonl` (name, event, stdout/stderr, exit code), so a formatter or linter that silently fails is visible instead of running unobserved in the SDK subprocess
 
 ### 🔒 Safety & Git Integration
@@ -202,7 +202,7 @@ risk tolerance:
   bump deliberately by editing the `uses:` line, same tradeoff as staying on an older dependency
   version.
 
-This is a separate axis from `szumrakEngineVersion` in `.claude/agent-config.json` (below), which
+This is a separate axis from `szumrakEngineVersion` in `.szumrak/config.json` (below), which
 pins the *Docker image* built inside the reusable workflow, not the workflow YAML that builds it.
 
 ---
@@ -221,7 +221,7 @@ pins the *Docker image* built inside the reusable workflow, not the workflow YAM
   automatic rounds per PR via a `review-round-N` label.
 - **`ask`** (`MODE=ask`) — answers `QUESTION` about the target repository in a hard-enforced
   read-only session (no file/git writes, regardless of the target repo's own
-  `.claude/agent-config.json` permissions) and writes the Markdown answer to
+  `.szumrak/config.json` permissions) and writes the Markdown answer to
   `GITHUB_STEP_SUMMARY`. Never commits, pushes, or opens a PR; independent of `runner`'s `verify`
   gate. A question unrelated to the repository still succeeds — the agent declines explicitly
   instead of answering off-topic.
@@ -246,9 +246,9 @@ MODE=skill-workflow      load manifest → setup/secrets/MCP/token → run skill
 
 A skill workflow turns one of the target repo's own skills (`.claude/skills/<skill>/SKILL.md`) into
 an unattended CI job. The skill holds the process; a manifest at
-`.claude/szumrak/skill-workflows/<name>.json` holds the **run contract** — what the run is given
+`.szumrak/skill-workflows/<name>.json` holds the **run contract** — what the run is given
 and what it's allowed to do. See
-[`target-repo-templates/.claude/szumrak/skill-workflows/do-ticket.json`](./target-repo-templates/.claude/szumrak/skill-workflows/do-ticket.json):
+[`target-repo-templates/.szumrak/skill-workflows/do-ticket.json`](./target-repo-templates/.szumrak/skill-workflows/do-ticket.json):
 
 ```jsonc
 {
@@ -303,9 +303,8 @@ already has a PR"), it checks that itself.
   `GH_APP_*`, no undeclared secrets. Every forwarded secret value is redacted verbatim from
   `agent-run.jsonl`.
 
-**Guardrails Szumrak adds regardless of the manifest:** the manifest and `agent-config.json` are
-read from the default branch; the agent can't edit `.claude/agent-config.json` or
-`.claude/szumrak/**`; inputs are validated against the manifest (undeclared keys rejected,
+**Guardrails Szumrak adds regardless of the manifest:** the manifest and `.szumrak/config.json` are
+read from the default branch; the agent can't edit anything under `.szumrak/`; inputs are validated against the manifest (undeclared keys rejected,
 `pattern` fully anchored); force-pushes, pushes to `main`/`master` and `gh pr merge` are denied
 (branch protection on the default branch is still the real guard). The run ends with a
 structured result (`completed`/`blocked` plus the skill's own summary) instead of free text; it
@@ -321,9 +320,20 @@ forwards only the secrets the manifest declares.
 
 ## 🧩 Target Repo Configuration
 
+All of Szumrak's configuration in the target repository lives in one dedicated folder,
+`.szumrak/` — kept apart from `.claude/`, which belongs to Claude Code itself:
+
+```
+.szumrak/
+├── config.json              # permissions / skills / verify / szumrakEngineVersion
+└── skill-workflows/         # optional — one JSON manifest per skill workflow
+    └── <name>.json
+```
+
 The target repository opts into agent-specific behavior via a single committed file:
-`.claude/agent-config.json` (see `target-repo-templates/.claude/agent-config.json` for a starter
-copy). All three fields are optional — a missing or invalid file just means "no extra
+`.szumrak/config.json` (see `target-repo-templates/.szumrak/config.json` for a starter
+copy). The older `.claude/agent-config.json` / `.claude/szumrak/` locations are no longer read —
+move them to `.szumrak/` when upgrading. All three fields are optional — a missing or invalid file just means "no extra
 restriction beyond the default permission mode, no skills, no verify"; it never throws.
 
 ```jsonc
@@ -427,7 +437,7 @@ logged as `authMethod` on the `agent_start` event in `agent-run.jsonl` (the valu
 | `PR_NUMBER` | yes when `MODE=review-followup` | PR number to follow up on |
 | `REVIEW_FEEDBACK` | yes when `MODE=review-followup` | reviewer's feedback text to address |
 | `QUESTION` | yes when `MODE=ask` | question for the agent to answer about the target repository, in natural language (max 1000 characters) |
-| `SKILL_WORKFLOW` | yes when `MODE=skill-workflow` | manifest name: `.claude/szumrak/skill-workflows/<name>.json` in the target repo |
+| `SKILL_WORKFLOW` | yes when `MODE=skill-workflow` | manifest name: `.szumrak/skill-workflows/<name>.json` in the target repo |
 | `SKILL_WORKFLOW_INPUTS` | no (default `{}`) | JSON object of the skill workflow's inputs, validated against its manifest |
 | `SKILL_WORKFLOW_SECRETS` | when the manifest declares `secrets` | JSON object `{ "NAME": "value" }` of the secrets the manifest declares |
 | `WORKSPACE_PATH` | no (default `/workspace`) | path to the target repository |
@@ -514,7 +524,7 @@ szumrak/
 │   │   └── skill-workflow/                # MODE=skill-workflow — run a target-repo skill per its manifest
 │   ├── agent/                       # reusable Claude Agent SDK wrapper, used by every flow
 │   │   ├── run-agent.ts               # wraps the SDK query() stream; hook/skill/CLAUDE.md loading lives here
-│   │   ├── agent-config.ts             # loads the target repo's .claude/agent-config.json
+│   │   ├── agent-config.ts             # loads the target repo's .szumrak/config.json
 │   │   ├── verify.ts                    # runs the target repo's `verify` commands (post-run gate)
 │   │   └── commit-metadata.ts            # Conventional Commits type/scope/subject parsing
 │   ├── github/                      # everything that touches git/GitHub, used by every flow
@@ -530,8 +540,8 @@ szumrak/
 │       └── summary.ts                   # GITHUB_STEP_SUMMARY writer
 ├── target-repo-templates/         # files meant to be copied INTO the target repo, not consumed here
 │   ├── CLAUDE.md
-│   ├── .claude/agent-config.json    # permissions / skills / verify — see Target Repo Configuration
-│   ├── .claude/szumrak/skill-workflows/do-ticket.json  # example skill workflow manifest
+│   ├── .szumrak/config.json         # permissions / skills / verify — see Target Repo Configuration
+│   ├── .szumrak/skill-workflows/do-ticket.json  # example skill workflow manifest
 │   └── .github/workflows/
 │       ├── szumrak-worker.yml          # thin caller: triggers + `uses: _worker-run.yml` / `_worker-review-followup.yml`
 │       ├── szumrak-holmes.yml          # thin caller: triggers + `uses: _holmes.yml`
@@ -558,7 +568,7 @@ szumrak/
 - **`src/agent/`** and **`src/github/`** — reusable building blocks every flow composes: the SDK
   wrapper and the git/GitHub integration, respectively
 - **`src/platform/`** — env validation, logging, and CI summaries; no flow-specific logic
-- **`target-repo-templates/`** — starter `CLAUDE.md` / `.claude/agent-config.json` /
+- **`target-repo-templates/`** — starter `CLAUDE.md` / `.szumrak/config.json` /
   `.github/workflows/szumrak-worker.yml` for the *target* repository the agent will operate on, not for
   this repo
 

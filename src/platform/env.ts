@@ -44,7 +44,7 @@ const AskModeEnv = z.object({
 });
 
 /**
- * The name doubles as a path segment (`.claude/szumrak/skill-workflows/<name>.json`),
+ * The name doubles as a path segment (`.szumrak/skill-workflows/<name>.json`),
  * so it is restricted to a slug — no `/`, `..` or dots that could escape that
  * directory.
  */

@@ -1,14 +1,14 @@
 # Reference template — copy into the target repo's .github/workflows/szumrak-skill-workflow.yml.
 # Runs one of the target repo's own skill workflows (MODE=skill-workflow): a skill
 # from .claude/skills/ driven end to end by its manifest in
-# .claude/szumrak/skill-workflows/<name>.json. All of the run logic (checkout of
+# .szumrak/skill-workflows/<name>.json. All of the run logic (checkout of
 # the default branch, secret filtering, Docker build/run, log upload) lives in the
 # `_skill-workflow.yml` reusable workflow hosted in JanSzewczyk/szumrak — this file
 # only wires triggers to it.
 #
 # Version the `uses: .../@ref` below to `main` (default) or pin it to a release
 # tag, same as szumrak-worker.yml. Independent from `szumrakEngineVersion` in
-# `.claude/agent-config.json`, which pins the Docker image built inside it.
+# `.szumrak/config.json`, which pins the Docker image built inside it.
 #
 # Add one job per trigger you need. The generic `workflow_dispatch` job below runs
 # any skill workflow by name; the commented-out job shows a dedicated trigger
@@ -19,7 +19,7 @@ on:
   workflow_dispatch:
     inputs:
       skill_workflow:
-        description: "Skill workflow to run (.claude/szumrak/skill-workflows/<name>.json)"
+        description: "Skill workflow to run (.szumrak/skill-workflows/<name>.json)"
         required: true
       inputs:
         description: 'Inputs as a JSON object, e.g. {"ticket": "PROJ-123"}'

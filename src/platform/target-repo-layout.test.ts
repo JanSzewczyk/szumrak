@@ -5,6 +5,10 @@ describe("TargetRepoPath", () => {
     expect(TargetRepoPath.SKILL_WORKFLOWS_DIR.startsWith(`${TargetRepoPath.SZUMRAK_DIR}/`)).toBe(true);
   });
 
+  test("keeps the agent config under the Szumrak directory the agent is denied from editing", () => {
+    expect(TargetRepoPath.AGENT_CONFIG.startsWith(`${TargetRepoPath.SZUMRAK_DIR}/`)).toBe(true);
+  });
+
   test("uses only forward slashes, so paths are valid inside SDK permission rules", () => {
     expect(Object.values(TargetRepoPath).filter((path) => path.includes("\\"))).toEqual([]);
   });
@@ -18,6 +22,6 @@ describe("skillFilePath", () => {
 
 describe("skillWorkflowManifestPath", () => {
   test("points at the named JSON manifest inside the skill workflows directory", () => {
-    expect(skillWorkflowManifestPath("do-ticket")).toBe(".claude/szumrak/skill-workflows/do-ticket.json");
+    expect(skillWorkflowManifestPath("do-ticket")).toBe(".szumrak/skill-workflows/do-ticket.json");
   });
 });

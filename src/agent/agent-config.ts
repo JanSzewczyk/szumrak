@@ -10,7 +10,7 @@ export interface AgentPermissions {
 
 /**
  * Per-target-repo agent configuration, committed by the target repo as
- * `.claude/agent-config.json`. Deliberately separate from the repo's own
+ * `.szumrak/config.json`. Deliberately separate from the repo's own
  * `.claude/settings.json`, which governs interactive Claude Code sessions
  * (hooks, personal permissions) and isn't meant to double as the unattended
  * agent's sandbox.
@@ -62,7 +62,7 @@ function asSkills(value: unknown): Array<string> | "all" | undefined {
 }
 
 /**
- * Loads the target repo's `.claude/agent-config.json` (see {@link AgentConfig}).
+ * Loads the target repo's `.szumrak/config.json` (see {@link AgentConfig}).
  * A missing or invalid file means "no extra restriction beyond permissionMode,
  * no skills, no verify commands" — it never throws.
  */

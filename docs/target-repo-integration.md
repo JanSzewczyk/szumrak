@@ -23,11 +23,12 @@ questions about the code.
 3. [Step 2 — install the App on the target repository](#step-2--install-the-app-on-the-target-repository)
 4. [Step 3 — set secrets on the target repository](#step-3--set-secrets-on-the-target-repository)
 5. [Step 4 — copy the template files](#step-4--copy-the-template-files)
-6. [Step 5 — customize `CLAUDE.md` and `agent-config.json`](#step-5--customize-claudemd-and-agent-configjson)
+6. [Step 5 — customize `CLAUDE.md` and `.szumrak/config.json`](#step-5--customize-claudemd-and-szumrakconfigjson)
 7. [Step 6 — check hook executable bits](#step-6--check-hook-executable-bits)
 8. [Step 7 — first run](#step-7--first-run)
 9. [Optional — skill workflows](#optional--skill-workflows)
 10. [Versioning: `uses:@ref` vs `szumrakEngineVersion`](#versioning-usesref-vs-szumrakengineversion)
+11. [Migrating from `.claude/agent-config.json` to `.szumrak/`](#migrating-from-claudeagent-configjson-to-szumrak)
 11. [Full environment variable / secret reference](#full-environment-variable--secret-reference)
 12. [Troubleshooting](#troubleshooting)
 
@@ -151,10 +152,10 @@ copied).
 
 ```bash
 # from the local checkout of the target repository
-mkdir -p .github/workflows .claude
+mkdir -p .github/workflows .szumrak
 cp /path/to/szumrak/target-repo-templates/.github/workflows/szumrak-worker.yml .github/workflows/
 cp /path/to/szumrak/target-repo-templates/.github/workflows/szumrak-holmes.yml .github/workflows/
-cp /path/to/szumrak/target-repo-templates/.claude/agent-config.json .claude/
+cp /path/to/szumrak/target-repo-templates/.szumrak/config.json .szumrak/
 cp /path/to/szumrak/target-repo-templates/CLAUDE.md ./CLAUDE.md   # only if the repo doesn't already have one
 ```
 
@@ -168,9 +169,9 @@ What each file does:
   see [README → Level 3](../README.md#level-3--full-cycle-in-github-actions).
 - **`.github/workflows/szumrak-holmes.yml`** — a thin caller for `MODE=ask`
   (`_holmes.yml`), a read-only mode with no commits/PRs.
-- **`.claude/agent-config.json`** — opt-in configuration: agent permissions,
+- **`.szumrak/config.json`** — opt-in configuration: agent permissions,
   skill whitelist, `verify` commands, engine version pin. Covered in detail
-  in [Step 5](#step-5--customize-claudemd-and-agent-configjson).
+  in [Step 5](#step-5--customize-claudemd-and-szumrakconfigjson).
 - **`CLAUDE.md`** — project instructions for the agent (architecture,
   conventions). If the target repository **already has** a `CLAUDE.md` used
   by interactive Claude Code sessions, leave it as is — Szumrak reads that
@@ -183,7 +184,7 @@ in the README.
 
 ---
 
-## Step 5 — customize `CLAUDE.md` and `agent-config.json`
+## Step 5 — customize `CLAUDE.md` and `.szumrak/config.json`
 
 ### `CLAUDE.md`
 
@@ -195,7 +196,7 @@ more accurate the agent's changes — it's the same file a human would read in
 an interactive Claude Code session (`settingSources: ['project']` loads it
 automatically; Szumrak does nothing extra here).
 
-### `.claude/agent-config.json`
+### `.szumrak/config.json`
 
 ```jsonc
 {
@@ -295,8 +296,8 @@ environment and reports the result. The overview lives in the README's
    did (Szumrak asks for a structured result on top of it). If it should open a PR, the skill
    does it itself (`git push` + `gh pr create`).
 2. **The manifest** — copy
-   `target-repo-templates/.claude/szumrak/skill-workflows/do-ticket.json` to
-   `.claude/szumrak/skill-workflows/<name>.json` and adjust `skill`, `inputs`, limits, `secrets`,
+   `target-repo-templates/.szumrak/skill-workflows/do-ticket.json` to
+   `.szumrak/skill-workflows/<name>.json` and adjust `skill`, `inputs`, limits, `secrets`,
    `setup`, `mcpServers`, `github.permissions` (omit it when the skill doesn't touch GitHub) and
    `permissions`. It must be on the **default branch** — the reusable workflow always checks
    that branch out.
@@ -348,7 +349,7 @@ These are two **independent** versioning axes — easy to conflate:
 | What | Where | What it controls |
 | --- | --- | --- |
 | `uses: JanSzewczyk/szumrak/.github/workflows/_worker-run.yml@<ref>` | `szumrak-worker.yml` in the target repo | which version of the **workflow YAML logic** (steps, checkout, build) runs |
-| `szumrakEngineVersion` in `.claude/agent-config.json` | target repo | which **engine release** (the Docker image with the agent code) is built inside that logic |
+| `szumrakEngineVersion` in `.szumrak/config.json` | target repo | which **engine release** (the Docker image with the agent code) is built inside that logic |
 
 By default both point at `main` — the latest changes on either layer reach
 the target repository automatically on every run, with no action needed on
@@ -360,12 +361,41 @@ uses: JanSzewczyk/szumrak/.github/workflows/_worker-run.yml@v1.13.0
 ```
 
 ```jsonc
-// .claude/agent-config.json
+// .szumrak/config.json
 { "szumrakEngineVersion": "v1.13.0" }
 ```
 
 You can pin one axis while leaving the other on `main` — they don't need to
 match.
+
+---
+
+## Migrating from `.claude/agent-config.json` to `.szumrak/`
+
+Szumrak's own configuration used to live inside `.claude/` (which belongs to
+Claude Code). It now has a dedicated folder, and the old locations are **no
+longer read** — there is no fallback:
+
+| Before | After |
+| --- | --- |
+| `.claude/agent-config.json` | `.szumrak/config.json` |
+| `.claude/szumrak/skill-workflows/<name>.json` | `.szumrak/skill-workflows/<name>.json` |
+
+`.claude/skills/`, `.claude/settings.json`, `.mcp.json` and `CLAUDE.md` stay
+where they are — Claude Code itself reads them.
+
+```bash
+mkdir -p .szumrak
+git mv .claude/agent-config.json .szumrak/config.json
+git mv .claude/szumrak/skill-workflows .szumrak/skill-workflows   # only if you have skill workflows
+```
+
+Do it in the same commit that bumps `szumrakEngineVersion` to the first
+release that reads `.szumrak/` (and, if you pin `uses:@<ref>`, that ref too):
+the reusable workflows read the engine pin from `.szumrak/config.json`, so a
+repo that still has only the old file silently falls back to building the
+engine from `main`, which then finds no configuration at all (no permissions
+restriction, no skills, no `verify`).
 
 ---
 
@@ -415,7 +445,7 @@ secrets:
 
 Variables that are **not** inputs (computed inside the reusable workflow,
 with no way to override them from `with:`): `SZUMRAK_REF` (derived from
-`szumrakEngineVersion` in `agent-config.json` — see the section above),
+`szumrakEngineVersion` in `.szumrak/config.json` — see the section above),
 `REPO` (always `${{ github.repository }}` of the target repo).
 
 ### Engine environment variables (local development only, Levels 1/2 from the README)
@@ -451,7 +481,7 @@ To allow other people, change the `if:` condition in the copied
 `szumrak-worker.yml`/`szumrak-holmes.yml` — deliberately, since every run
 burns real Claude usage (API billing or subscription quota).
 
-### `Unknown skill: ...` despite `"skills": "all"` in `agent-config.json`
+### `Unknown skill: ...` despite `"skills": "all"` in `.szumrak/config.json`
 
 `skills` only *filters* skills already discovered by the SDK — discovery
 depends on the target repo's `.claude/` being loaded at all
@@ -460,7 +490,7 @@ skills actually live at `.claude/skills/<name>/SKILL.md` in the target repo.
 
 ### Checking out `szumrak-src` fails on a nonexistent tag
 
-`szumrakEngineVersion` in `agent-config.json` points at a tag that doesn't
+`szumrakEngineVersion` in `.szumrak/config.json` points at a tag that doesn't
 exist in [this repo's releases](https://github.com/JanSzewczyk/szumrak/releases).
 Fix the tag, or remove the field to fall back to `main`.
 
@@ -470,4 +500,4 @@ Check the `Run Szumrak` step in the GitHub Actions log
 (`gh run view <id> --log-failed`) — the most common causes are a missing or
 incorrect secret (`GH_APP_*`), missing `workflows` permission (see above), or
 a failure returned by `verify` (the agent's session ends successfully, but
-the post-run `verify` from `agent-config.json` blocks the PR).
+the post-run `verify` from `.szumrak/config.json` blocks the PR).

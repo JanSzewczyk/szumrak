@@ -10,7 +10,7 @@ export interface VerifyOutcome {
 const MAX_OUTPUT_CHARS = 4000;
 
 /**
- * Runs the target repo's `verify` commands (from `.claude/agent-config.json`)
+ * Runs the target repo's `verify` commands (from `.szumrak/config.json`)
  * inside the workspace and collects every failure instead of stopping at the
  * first, so the agent gets the full picture in one round.
  *

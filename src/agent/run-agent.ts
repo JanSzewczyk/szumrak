@@ -46,9 +46,9 @@ export interface RunAgentOptions {
   maxBudgetUsd?: number;
   /** Added on top of the allowlisted subprocess env from agent/agent-auth.ts. */
   env?: Record<string, string>;
-  /** Merged into (never replacing) the target repo's agent-config.json permissions. */
+  /** Merged into (never replacing) the target repo's .szumrak/config.json permissions. */
   permissions?: AgentPermissions;
-  /** Replaces agent-config.json's `skills` for this run. */
+  /** Replaces .szumrak/config.json's `skills` for this run. */
   skills?: Array<string> | "all";
   /**
    * Passed with `strictMcpConfig: true`, so these are the *only* MCP servers
@@ -98,7 +98,7 @@ function findUnusableMcpServers(
  * "acceptEdits" (auto-accept file edits) is enough without opening up Bash.
  *
  * `options.readOnly` is a Szumrak-enforced guarantee for ask mode: the target
- * repo's agent-config.json permissions are ignored entirely (not merged) so a
+ * repo's .szumrak/config.json permissions are ignored entirely (not merged) so a
  * repo-owned config file can never widen tool access beyond Read/Grep/Glob.
  */
 export async function runAgent(task: string, options?: RunAgentOptions): Promise<AgentRunResult> {
@@ -171,7 +171,7 @@ export async function runAgent(task: string, options?: RunAgentOptions): Promise
         : mergeList(config?.permissions?.allow, options?.permissions?.allow),
       disallowedTools: readOnly ? undefined : mergeList(config?.permissions?.deny, options?.permissions?.deny),
       /**
-       * Skills whitelisted by the target repo's agent-config.json (`"all"` or
+       * Skills whitelisted by the target repo's .szumrak/config.json (`"all"` or
        * a name list). Discovery happens in the target repo's own
        * `.claude/skills/`; the model then invokes them autonomously based on
        * each SKILL.md's name/description. Omitted entirely when the target

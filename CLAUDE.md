@@ -12,9 +12,9 @@ target repository instead, with no commit/push/PR anywhere in that path — see 
 
 The critical distinction to hold in mind: **this repo never operates on itself.** It is a tool
 that acts on some other repo. `src/` is the engine; `target-repo-templates/` are files meant to
-be copied *into the target repo* (its `CLAUDE.md`, `.claude/agent-config.json`,
+be copied *into the target repo* (its `CLAUDE.md`, `.szumrak/config.json`,
 `.github/workflows/szumrak-worker.yml`, `.github/workflows/szumrak-holmes.yml`,
-`.github/workflows/szumrak-skill-workflow.yml`, an example `.claude/szumrak/skill-workflows/*.json`
+`.github/workflows/szumrak-skill-workflow.yml`, an example `.szumrak/skill-workflows/*.json`
 manifest), not consumed here. Each template workflow is a thin trigger wrapper around a
 same-named reusable workflow hosted in this repo's own `.github/workflows/_worker-run.yml` /
 `_worker-review-followup.yml` / `_holmes.yml` / `_skill-workflow.yml` — the target repo's copy only wires up the
@@ -78,7 +78,7 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
 `src/index.ts` (entrypoint, reads env) branches on `MODE`:
 - **`Mode.RUNNER`** (`MODE=runner`, default) — `flows/runner/run-runner-flow.ts`:
   `runAgent(task)` → on success, a final verify gate (re-runs the target repo's `verify` commands
-  from agent-config.json via `agent/verify.ts` — the flow fails without opening a PR, and a
+  from `.szumrak/config.json` via `agent/verify.ts` — the flow fails without opening a PR, and a
   DRY_RUN reports failure too) → not `DRY_RUN`, `commitAndOpenPR(...)`.
 - **`Mode.REVIEW_FOLLOWUP`** (`MODE=review-followup`) — `flows/review-followup/run-review-followup-flow.ts`:
   `runReviewFollowUp(owner, repo, PR_NUMBER, REVIEW_FEEDBACK)`. Addresses code-review feedback on
@@ -101,7 +101,7 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   in this mode; `QUESTION` (max 1000 chars) is, instead. `readOnly: true` makes `run-agent.ts`
   force `permissionMode: "default"` (not `acceptEdits`), restrict tools to
   `READ_ONLY_ALLOWED_TOOLS` (Read/Grep/Glob — no Bash, no edits), skip loading the target repo's
-  `agent-config.json` permissions/verify entirely, and append `agent/ask-instructions.ts`'s
+  `.szumrak/config.json` permissions/verify entirely, and append `agent/ask-instructions.ts`'s
   `ASK_MODE_INSTRUCTIONS` to the system prompt instead of `COMMIT_METADATA_INSTRUCTIONS` (there is
   nothing to commit in a read-only session). Those instructions also encode the answer contract at
   the prompt level — decline plainly if the question isn't about this repo, cite every claim as
@@ -111,7 +111,7 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   workflow (see above), never through `szumrak-worker.yml`.
 - **`Mode.SKILL_WORKFLOW`** (`MODE=skill-workflow`) — `flows/skill-workflow/run-skill-workflow-flow.ts`:
   runs a skill that lives in the target repo end to end, driven by the target repo's manifest
-  `.claude/szumrak/skill-workflows/<SKILL_WORKFLOW>.json` (loaded by `flows/skill-workflow/manifest.ts`
+  `.szumrak/skill-workflows/<SKILL_WORKFLOW>.json` (loaded by `flows/skill-workflow/manifest.ts`
   against the strict Zod schema in `manifest-schema.ts`, which composes the input and MCP entry
   schemas owned by `inputs.ts` / `mcp-servers.ts`; `{{inputs.x}}` args syntax lives in
   `skill-args.ts`, the flow's `SkillWorkflowConfigError`/`SkillWorkflowSetupError` in `errors.ts`). The *whole process* belongs to the target repo's skill — including whether it
@@ -154,9 +154,12 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   `GH_APP_PRIVATE_KEY`, skill workflow secrets and untrusted `TASK` text. Anything else a run needs
   is added explicitly via `RunAgentOptions.env`. The chosen method is logged as `authMethod` on
   `agent_start`; `platform/env.ts` fails fast when neither is set.
-- **`agent/agent-config.ts`** loads `<WORKSPACE_PATH>/.claude/agent-config.json`, the target
-  repo's opt-in agent configuration (it replaced the earlier permissions-only
-  `.claude/agent-permissions.json`, which is no longer read).
+- **`agent/agent-config.ts`** loads `<WORKSPACE_PATH>/.szumrak/config.json`, the target
+  repo's opt-in agent configuration. All of Szumrak's own target-repo configuration lives under
+  `.szumrak/` (this file plus `.szumrak/skill-workflows/`); the older `.claude/agent-config.json`,
+  `.claude/szumrak/` and permissions-only `.claude/agent-permissions.json` locations are no longer
+  read — there is deliberately no fallback. Only files Claude Code itself reads (`.claude/skills/`,
+  `.claude/settings.json`, `.mcp.json`) stay under `.claude/`/repo root.
   Three fields, all optional: `permissions.allow`/`permissions.deny` → SDK
   `allowedTools`/`disallowedTools`; `skills` (`"all"` or a name whitelist) → the SDK `skills`
   option, exposing the target repo's `.claude/skills/` to the agent, which then invokes them
@@ -210,8 +213,8 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   runs, so a bad env never wastes an API turn. Import `env` from here — there is no `config.ts`.
 - **`platform/target-repo-layout.ts`** (`TargetRepoPath`, `skillFilePath`,
   `skillWorkflowManifestPath`) is the single source of every path Szumrak reads or protects in the
-  target repo (`agent-config.json`, `settings.json`, `.claude/skills/`, `.claude/szumrak/`,
-  `.mcp.json`), always `/`-separated so the same string works in `join()`, SDK permission rules and
+  target repo (`.szumrak/` with `config.json` and `skill-workflows/`, `.claude/settings.json`,
+  `.claude/skills/`, `.mcp.json`), always `/`-separated so the same string works in `join()`, SDK permission rules and
   prompt text. Never hardcode those paths elsewhere: the skill-workflow deny list is built from
   them, so a path that drifted from its loader would stop being protected without any error.
 - **`platform/logger.ts`** appends JSONL events to `<WORKSPACE_PATH>/agent-run.jsonl` (uploaded as a
@@ -250,14 +253,14 @@ required, the OAuth token wins — see `agent/agent-auth.ts`), `DRY_RUN`, `AGENT
   Bash command/hook it runs) can see. Never pass `GH_APP_*`, the unscoped installation token,
   `SKILL_WORKFLOW_SECRETS`, or a secret not listed in a manifest's `agentEnv` into it.
 - **Skill workflow config can't be changed by the run it configures.** The manifest and
-  `agent-config.json` come from the default branch (`_skill-workflow.yml` checks it out), the flow
-  always denies `Edit`/`Write` on `.claude/agent-config.json` and `.claude/szumrak/**`, and MCP
+  `.szumrak/config.json` come from the default branch (`_skill-workflow.yml` checks it out), the flow
+  always denies `Edit`/`Write` on `.szumrak/**` (which holds both), and MCP
   `${VAR}` expansion reads declared secrets only — never the host environment.
 - **`github/git-operations.ts` uses `execFileSync` with an argument array on purpose — never
   `execSync` on an interpolated string.** `TASK` is untrusted input (in CI it comes from a GitHub
   comment body), so string interpolation into a shell command is a command-injection vector.
 - **Skills are target-repo-opt-in only — Szumrak itself defines none.** The SDK `skills` option
-  is passed through verbatim from the target repo's `agent-config.json` (`"all"` or a name list)
+  is passed through verbatim from the target repo's `.szumrak/config.json` (`"all"` or a name list)
   and omitted entirely when the repo doesn't opt in; skill content lives in the target repo's
   `.claude/skills/`, never in this repo. Don't add szumrak-side skill definitions or validation.
 - **`settingSources: ['project']` — and only `'project'` — stays.** This one value is what makes
