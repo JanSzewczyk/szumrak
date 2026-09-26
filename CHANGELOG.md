@@ -3,6 +3,12 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.15.0](https://github.com/JanSzewczyk/szumrak/compare/v1.14.0...v1.15.0) (2026-09-26)
+
+### Features
+
+* move target repo configuration to a dedicated .szumrak/ folder ([a73ffef](https://github.com/JanSzewczyk/szumrak/commit/a73ffef0b6d665c0183d0f27dd2a26bdc51695d1))
+
 ## [1.14.0](https://github.com/JanSzewczyk/szumrak/compare/v1.13.0...v1.14.0) (2026-09-26)
 
 ### Features
