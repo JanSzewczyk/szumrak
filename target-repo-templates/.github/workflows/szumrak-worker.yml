@@ -8,7 +8,7 @@
 # improvements apply automatically on every run, no copy to update) or pin it to a
 # release tag, e.g. `@v1.13.0` (deliberate, manual bumps — see README.md's
 # "Target Repo Configuration" section). Note this is independent from
-# `szumrakEngineVersion` in `.claude/agent-config.json`, which pins the Docker image
+# `szumrakEngineVersion` in `.szumrak/config.json`, which pins the Docker image
 # built *inside* the reusable workflow, not the workflow YAML itself.
 name: Szumrak Worker 👷‍♂️
 

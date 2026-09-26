@@ -54,10 +54,10 @@ const mockedRegisterSecretValues = vi.mocked(registerSecretValues);
 const mockedWriteStepSummary = vi.mocked(writeStepSummary);
 
 const WORKSPACE = "/workspace";
-const MANIFEST_PATH = join(WORKSPACE, ".claude", "szumrak", "skill-workflows", "do-ticket.json");
+const MANIFEST_PATH = join(WORKSPACE, ".szumrak", "skill-workflows", "do-ticket.json");
 const SKILL_PATH = join(WORKSPACE, ".claude", "skills", "do-ticket", "SKILL.md");
 const MCP_PATH = join(WORKSPACE, ".mcp.json");
-const AGENT_CONFIG_PATH = join(WORKSPACE, ".claude", "agent-config.json");
+const AGENT_CONFIG_PATH = join(WORKSPACE, ".szumrak", "config.json");
 
 const INPUTS = JSON.stringify({ ticket: "PROJ-1" });
 const SECRETS = JSON.stringify({ JIRA_API_TOKEN: "jira-t0ken", JIRA_CLI_TOKEN: "cli-t0ken" });
@@ -277,24 +277,19 @@ describe("runSkillWorkflowFlow", () => {
 
       expect(mockedRunAgent.mock.calls[0][1]?.permissions?.deny).toEqual(
         expect.arrayContaining([
-          "Edit(.claude/szumrak/**)",
-          "Edit(.claude/agent-config.json)",
+          "Edit(.szumrak/**)",
+          "Write(.szumrak/**)",
           "Bash(git push --force*)",
           "Bash(gh pr merge*)"
         ])
       );
     });
 
-    test("denies both Edit and Write on every configuration path of the target repo layout", async () => {
+    test("denies both Edit and Write on the Szumrak directory holding every configuration file", async () => {
       await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
 
       expect(mockedRunAgent.mock.calls[0][1]?.permissions?.deny).toEqual(
-        expect.arrayContaining(
-          [TargetRepoPath.AGENT_CONFIG, `${TargetRepoPath.SZUMRAK_DIR}/**`].flatMap((path) => [
-            `Edit(${path})`,
-            `Write(${path})`
-          ])
-        )
+        expect.arrayContaining([`Edit(${TargetRepoPath.SZUMRAK_DIR}/**)`, `Write(${TargetRepoPath.SZUMRAK_DIR}/**)`])
       );
     });
 

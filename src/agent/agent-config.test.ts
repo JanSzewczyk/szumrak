@@ -15,7 +15,7 @@ const mockedExistsSync = vi.mocked(existsSync);
 const mockedReadFileSync = vi.mocked(readFileSync);
 
 const WORKSPACE = "/workspace";
-const CONFIG_PATH = join(WORKSPACE, ".claude", "agent-config.json");
+const CONFIG_PATH = join(WORKSPACE, ".szumrak", "config.json");
 
 function fileOnDisk(path: string, content: unknown) {
   mockedExistsSync.mockImplementation((candidate) => candidate === path);
@@ -38,7 +38,7 @@ describe("loadAgentConfig", () => {
     expect(mockedReadFileSync).not.toHaveBeenCalled();
   });
 
-  test("loads permissions, skills list, and verify commands from agent-config.json", () => {
+  test("loads permissions, skills list, and verify commands from .szumrak/config.json", () => {
     fileOnDisk(CONFIG_PATH, {
       permissions: { allow: ["Read", "Edit"], deny: ["Bash(rm -rf*)"] },
       skills: ["pdf", "storybook-testing"],
@@ -74,7 +74,7 @@ describe("loadAgentConfig", () => {
     expect(loadAgentConfig(WORKSPACE)).toEqual({});
   });
 
-  test("returns an empty config for invalid JSON in agent-config.json", () => {
+  test("returns an empty config for invalid JSON in .szumrak/config.json", () => {
     fileOnDisk(CONFIG_PATH, "not json");
 
     expect(loadAgentConfig(WORKSPACE)).toEqual({});

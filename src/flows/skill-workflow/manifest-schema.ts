@@ -27,8 +27,8 @@ const SECRET_NAME = z
 const GitHubAccessSchema = z.enum([GitHubAccess.READ, GitHubAccess.WRITE]);
 
 /**
- * `.claude/szumrak/skill-workflows/<name>.json` in the target repo. JSON — like
- * agent-config.json — so the engine needs no YAML parser and the reusable
+ * `.szumrak/skill-workflows/<name>.json` in the target repo. JSON — like
+ * .szumrak/config.json — so the engine needs no YAML parser and the reusable
  * workflow can read `secrets` with plain `jq`.
  *
  * Strict objects on purpose: a misspelled key (`maxturns`, `secret`) is a
@@ -47,7 +47,7 @@ export const SkillWorkflowManifestSchema = z
     maxTurns: z.number().int().positive().max(500).optional(),
     maxDurationMinutes: z.number().int().positive().max(360).optional(),
     maxBudgetUsd: z.number().positive().optional(),
-    /** Overrides agent-config.json's `skills`; the entry skill is always added. */
+    /** Overrides .szumrak/config.json's `skills`; the entry skill is always added. */
     skills: z.union([z.literal("all"), z.array(z.string().min(1))]).optional(),
     /** Every secret the run may use. The reusable workflow forwards exactly these, nothing else. */
     secrets: z.array(SECRET_NAME).default([]),

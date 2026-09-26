@@ -36,12 +36,7 @@ export interface SkillWorkflowFlowInput {
  * Enforced by Szumrak regardless of the manifest: the agent must not be able
  * to rewrite the configuration that decides what it's allowed to do.
  */
-const PROTECTED_CONFIG_DENY = [
-  `Edit(${TargetRepoPath.AGENT_CONFIG})`,
-  `Write(${TargetRepoPath.AGENT_CONFIG})`,
-  `Edit(${TargetRepoPath.SZUMRAK_DIR}/**)`,
-  `Write(${TargetRepoPath.SZUMRAK_DIR}/**)`
-];
+const PROTECTED_CONFIG_DENY = [`Edit(${TargetRepoPath.SZUMRAK_DIR}/**)`, `Write(${TargetRepoPath.SZUMRAK_DIR}/**)`];
 
 /**
  * Best-effort guardrails for whatever the skill does with git. Prefix matching
@@ -98,7 +93,7 @@ async function prepareGitHubAccess(manifest: SkillWorkflowManifest): Promise<Rec
 /**
  * The skill-workflow flow (`MODE=skill-workflow`): runs a skill that lives in
  * the target repo end to end, described by
- * `.claude/szumrak/skill-workflows/<name>.json`. The skill owns the whole
+ * `.szumrak/skill-workflows/<name>.json`. The skill owns the whole
  * process — including whether it opens a PR, comments on a ticket or produces
  * nothing outside the session. Szumrak only orchestrates: it prepares exactly
  * the environment the manifest declares (inputs, secrets, setup commands, MCP

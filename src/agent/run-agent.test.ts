@@ -29,7 +29,7 @@ const mockedReadFileSync = vi.mocked(readFileSync);
 const mockedLog = vi.mocked(log);
 const mockedCheckHookHealth = vi.mocked(checkHookHealth);
 
-const CONFIG_PATH = join("/workspace", ".claude", "agent-config.json");
+const CONFIG_PATH = join("/workspace", ".szumrak", "config.json");
 
 /** Puts a single agent-config/permissions file "on disk" for the fs mocks. */
 function configOnDisk(path: string, content: unknown) {
@@ -216,7 +216,7 @@ describe("runAgent", () => {
     await expect(runAgent("task")).rejects.toThrow("Agent exceeded max duration");
   });
 
-  test("passes permissions.allow/deny from .claude/agent-config.json as allowedTools/disallowedTools", async () => {
+  test("passes permissions.allow/deny from .szumrak/config.json as allowedTools/disallowedTools", async () => {
     configOnDisk(CONFIG_PATH, { permissions: { allow: ["Read", "Edit"], deny: ["Bash(rm -rf*)"] } });
     mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
 
@@ -259,7 +259,7 @@ describe("runAgent", () => {
     );
   });
 
-  test("passes the skills whitelist from agent-config.json through to the SDK", async () => {
+  test("passes the skills whitelist from .szumrak/config.json through to the SDK", async () => {
     configOnDisk(CONFIG_PATH, { skills: "all" });
     mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
 
@@ -373,7 +373,7 @@ describe("runAgent", () => {
   /**
    * S1 — `runAgent(task, { readOnly: true })`:
    * 1. locks allowedTools to Read/Grep/Glob and permissionMode to "default".
-   * 2. does so even when the on-disk agent-config.json grants wider permissions —
+   * 2. does so even when the on-disk .szumrak/config.json grants wider permissions —
    *    the read-only branch must not merge/extend, and no disallowedTools key at all.
    * (No options / options.readOnly falsy is already covered by the pre-existing
    * "calls query with the task prompt..." and "passes permissions.allow/deny..." tests
@@ -528,7 +528,7 @@ describe("runAgent", () => {
       );
     });
 
-    test("ignores agent-config.json permissions.allow/deny entirely instead of merging them", async () => {
+    test("ignores .szumrak/config.json permissions.allow/deny entirely instead of merging them", async () => {
       configOnDisk(CONFIG_PATH, { permissions: { allow: ["Edit", "Bash"], deny: ["Bash(rm -rf*)"] } });
       mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
 
@@ -603,19 +603,19 @@ describe("runAgent", () => {
       expect(queryOptions()?.env).toMatchObject({ GH_TOKEN: "ghs_x", PATH: process.env.PATH });
     });
 
-    test("merges extra permissions into agent-config.json's instead of replacing them", async () => {
+    test("merges extra permissions into .szumrak/config.json's instead of replacing them", async () => {
       configOnDisk(CONFIG_PATH, { permissions: { allow: ["Read"], deny: ["Bash(rm -rf*)"] } });
       mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
 
-      await runAgent("task", { permissions: { allow: ["Bash(gh pr create *)"], deny: ["Edit(.claude/szumrak/**)"] } });
+      await runAgent("task", { permissions: { allow: ["Bash(gh pr create *)"], deny: ["Edit(.szumrak/**)"] } });
 
       expect(queryOptions()).toMatchObject({
         allowedTools: ["Read", "Bash(gh pr create *)"],
-        disallowedTools: ["Bash(rm -rf*)", "Edit(.claude/szumrak/**)"]
+        disallowedTools: ["Bash(rm -rf*)", "Edit(.szumrak/**)"]
       });
     });
 
-    test("replaces agent-config.json's skills when skills are passed", async () => {
+    test("replaces .szumrak/config.json's skills when skills are passed", async () => {
       configOnDisk(CONFIG_PATH, { skills: ["a"] });
       mockedQuery.mockReturnValue(streamOf([resultMessage()]) as never);
 

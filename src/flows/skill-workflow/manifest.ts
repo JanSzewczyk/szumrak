@@ -6,13 +6,13 @@ import { SkillWorkflowConfigError } from "./errors";
 import { type SkillWorkflowManifest, SkillWorkflowManifestSchema } from "./manifest-schema";
 
 /**
- * Loads and validates the named manifest. Unlike agent-config.json (where a
+ * Loads and validates the named manifest. Unlike .szumrak/config.json (where a
  * missing/broken file just means "no extra config"), a skill workflow run
  * can't do anything sensible without its manifest, so every problem throws a
  * {@link SkillWorkflowConfigError} with a readable message.
  *
  * `name` is already restricted to a slug by platform/env.ts, so it can't
- * escape `.claude/szumrak/skill-workflows/`.
+ * escape `.szumrak/skill-workflows/`.
  */
 export function loadSkillWorkflowManifest(workspacePath: string, name: string): SkillWorkflowManifest {
   const relativePath = skillWorkflowManifestPath(name);

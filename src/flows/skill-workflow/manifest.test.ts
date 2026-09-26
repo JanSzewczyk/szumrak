@@ -11,7 +11,7 @@ vi.mock("node:fs", () => ({
 const mockedExistsSync = vi.mocked(existsSync);
 const mockedReadFileSync = vi.mocked(readFileSync);
 
-const MANIFEST_PATH = join("/workspace", ".claude", "szumrak", "skill-workflows", "do-ticket.json");
+const MANIFEST_PATH = join("/workspace", ".szumrak", "skill-workflows", "do-ticket.json");
 
 function manifestOnDisk(content: unknown) {
   mockedExistsSync.mockImplementation((candidate) => candidate === MANIFEST_PATH);

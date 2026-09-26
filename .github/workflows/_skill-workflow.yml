@@ -1,7 +1,7 @@
 # Reusable workflow — called via `uses:` from a target repo's own
 # .github/workflows/szumrak-skill-workflow.yml (see target-repo-templates/). Runs
 # MODE=skill-workflow: a skill that lives in the target repo, driven end to end by
-# its manifest at .claude/szumrak/skill-workflows/<skill_workflow>.json. Pin the
+# its manifest at .szumrak/skill-workflows/<skill_workflow>.json. Pin the
 # caller's `uses: .../_skill-workflow.yml@<ref>` to `main` for automatic updates or
 # to a release tag for deliberate bumps — see README.md.
 #
@@ -15,7 +15,7 @@ on:
   workflow_call:
     inputs:
       skill_workflow:
-        description: "Manifest name: .claude/szumrak/skill-workflows/<skill_workflow>.json"
+        description: "Manifest name: .szumrak/skill-workflows/<skill_workflow>.json"
         required: true
         type: string
       inputs:
@@ -65,7 +65,7 @@ jobs:
       cancel-in-progress: false
     steps:
       # Always the default branch, whatever ref triggered the caller: the manifest
-      # and agent-config.json decide what the agent is allowed to do, so they must
+      # and .szumrak/config.json decide what the agent is allowed to do, so they must
       # come from reviewed code, never from a PR branch or an arbitrary ref.
       - name: Checkout target repo (default branch)
         uses: actions/checkout@v7
@@ -82,19 +82,19 @@ jobs:
             echo "::error::skill_workflow must be a lowercase slug (a-z, 0-9, '-')"
             exit 1
           fi
-          if [[ ! -f "workspace/.claude/szumrak/skill-workflows/$SKILL_WORKFLOW.json" ]]; then
-            echo "::error::Manifest not found: .claude/szumrak/skill-workflows/$SKILL_WORKFLOW.json"
+          if [[ ! -f "workspace/.szumrak/skill-workflows/$SKILL_WORKFLOW.json" ]]; then
+            echo "::error::Manifest not found: .szumrak/skill-workflows/$SKILL_WORKFLOW.json"
             exit 1
           fi
 
       # Resolves which Szumrak engine ref to build from the target repo's own
-      # .claude/agent-config.json (szumrakEngineVersion field — a real
+      # .szumrak/config.json (szumrakEngineVersion field — a real
       # JanSzewczyk/szumrak release tag). Falls back to "main" when the file,
       # field, or jq itself is missing/fails — never fails the job over this.
       - name: Resolve Szumrak engine ref
         run: |
           REF="main"
-          RESOLVED=$(jq -r '.szumrakEngineVersion // empty' workspace/.claude/agent-config.json 2>/dev/null || true)
+          RESOLVED=$(jq -r '.szumrakEngineVersion // empty' workspace/.szumrak/config.json 2>/dev/null || true)
           if [[ "$RESOLVED" =~ ^[A-Za-z0-9._/-]+$ ]]; then
             REF="$RESOLVED"
           fi
@@ -122,7 +122,7 @@ jobs:
           ALL_SECRETS: ${{ toJSON(secrets) }}
           SKILL_WORKFLOW: ${{ inputs.skill_workflow }}
         run: |
-          NAMES=$(jq -c '.secrets // []' "workspace/.claude/szumrak/skill-workflows/$SKILL_WORKFLOW.json")
+          NAMES=$(jq -c '.secrets // []' "workspace/.szumrak/skill-workflows/$SKILL_WORKFLOW.json")
           printf '%s' "$ALL_SECRETS" \
             | jq -c --argjson names "$NAMES" 'with_entries(select(.key as $k | $names | index($k)))' \
             > "$RUNNER_TEMP/skill-workflow-secrets.json"

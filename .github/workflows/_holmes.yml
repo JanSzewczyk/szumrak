@@ -60,13 +60,13 @@ jobs:
           path: workspace
 
       # Resolves which Szumrak engine ref to build from the target repo's own
-      # .claude/agent-config.json (szumrakEngineVersion field — a real
+      # .szumrak/config.json (szumrakEngineVersion field — a real
       # JanSzewczyk/szumrak release tag). Falls back to "main" when the file,
       # field, or jq itself is missing/fails — never fails the job over this.
       - name: Resolve Szumrak engine ref
         run: |
           REF="main"
-          RESOLVED=$(jq -r '.szumrakEngineVersion // empty' workspace/.claude/agent-config.json 2>/dev/null || true)
+          RESOLVED=$(jq -r '.szumrakEngineVersion // empty' workspace/.szumrak/config.json 2>/dev/null || true)
           if [[ "$RESOLVED" =~ ^[A-Za-z0-9._/-]+$ ]]; then
             REF="$RESOLVED"
           fi
