@@ -3,6 +3,28 @@
 All notable changes to this project will be documented in this file. See
 [Conventional Commits](https://conventionalcommits.org) for commit guidelines.
 
+## [1.14.0](https://github.com/JanSzewczyk/szumrak/compare/v1.13.0...v1.14.0) (2026-09-26)
+
+### Features
+
+* add skill-workflow mode for running target-repo skills end to end ([89b0c5e](https://github.com/JanSzewczyk/szumrak/commit/89b0c5eff4a270b2b085d17cb7e31f5967faf986))
+
+### Miscellaneous Chores
+
+* add knip dead-code check to scripts and PR checks ([bc6f524](https://github.com/JanSzewczyk/szumrak/commit/bc6f524f7c2eb723eb6951770a30f11f26c296c2))
+* **deps:** bump biome, @types/node and tsx ([c2456c7](https://github.com/JanSzewczyk/szumrak/commit/c2456c722234dd8b407ac2898482551be4f491d4))
+* **deps:** resolve security audit findings ([7f78e22](https://github.com/JanSzewczyk/szumrak/commit/7f78e22a026b789d272415a96ce34b6e5093ae93))
+* **deps:** update claude-agent-sdk to 0.3.281 ([6cfe909](https://github.com/JanSzewczyk/szumrak/commit/6cfe9099b0679e4021ed19ce54412d9ecc73a03e))
+* **deps:** update vitest and coverage-v8 to 5.0.1 ([a595e5b](https://github.com/JanSzewczyk/szumrak/commit/a595e5b03ad9005722b1a56f2c7ec28129880464))
+* **deps:** update zod to 4.6 ([ba8e4cb](https://github.com/JanSzewczyk/szumrak/commit/ba8e4cbbb65c05d472cde268f015736e4554a352))
+* **rules:** replace code-style rule with shared typescript rule ([84f0cac](https://github.com/JanSzewczyk/szumrak/commit/84f0cac6673a7749f5669ce13242e0290cfde835))
+
+### Code Refactoring
+
+* move FlowResult contract to src/types ([2ecc94e](https://github.com/JanSzewczyk/szumrak/commit/2ecc94e07c3477cff67c51e275bf418354c94b99))
+* **skill-workflow:** make the flow pure orchestration ([3853700](https://github.com/JanSzewczyk/szumrak/commit/385370055f7f1cf4f712508ffeb5eb01569e652b))
+* **skill-workflow:** split manifest module and centralise target repo paths ([5eb6cb1](https://github.com/JanSzewczyk/szumrak/commit/5eb6cb196ee706278f1d8641208db4fb1569815f))
+
 ## [1.13.0](https://github.com/JanSzewczyk/szumrak/compare/v1.12.1...v1.13.0) (2026-09-23)
 
 ### Features
