@@ -4,36 +4,17 @@ import {
   parseSkillWorkflowResult,
   SkillWorkflowStatus
 } from "~/flows/skill-workflow/instructions";
-import { SkillWorkflowDelivery } from "~/flows/skill-workflow/manifest";
 
 describe("parseSkillWorkflowResult", () => {
-  test("parses a completed result with a pull request URL", () => {
+  test("parses a completed result", () => {
     const result = parseSkillWorkflowResult({
       status: SkillWorkflowStatus.COMPLETED,
-      summary: "Implemented PROJ-1",
-      pullRequestUrl: "https://github.com/acme/app/pull/7"
+      summary: "Implemented PROJ-1 in https://github.com/acme/app/pull/7"
     });
 
     expect(result).toEqual({
       status: SkillWorkflowStatus.COMPLETED,
-      summary: "Implemented PROJ-1",
-      pullRequestUrl: "https://github.com/acme/app/pull/7",
-      commit: undefined
-    });
-  });
-
-  test("normalizes commit fields into commit metadata", () => {
-    const result = parseSkillWorkflowResult({
-      status: SkillWorkflowStatus.COMPLETED,
-      summary: "done",
-      commit: { type: "feat", scope: "tickets", subject: "add ticket view", branch: "Add Ticket View!" }
-    });
-
-    expect(result?.commit).toEqual({
-      type: "feat",
-      scope: "tickets",
-      subject: "add ticket view",
-      branchSlug: "add-ticket-view"
+      summary: "Implemented PROJ-1 in https://github.com/acme/app/pull/7"
     });
   });
 
@@ -47,19 +28,16 @@ describe("parseSkillWorkflowResult", () => {
 });
 
 describe("buildSkillWorkflowInstructions", () => {
-  test("lets the skill deliver the PR itself for agent delivery", () => {
-    const instructions = buildSkillWorkflowInstructions(SkillWorkflowDelivery.AGENT, false);
+  test("adds git guardrails without telling the skill to open a pull request", () => {
+    const instructions = buildSkillWorkflowInstructions(false);
 
-    expect(instructions).toContain("The skill owns delivery");
+    expect(instructions).toContain("never commit or push to the default branch");
+    expect(instructions).not.toMatch(/open the pull request/i);
     expect(instructions).not.toContain("DRY RUN");
   });
 
-  test("forbids git delivery steps for engine delivery", () => {
-    expect(buildSkillWorkflowInstructions(SkillWorkflowDelivery.ENGINE, false)).toContain("Szumrak owns delivery");
-  });
-
   test("adds dry-run rules in a dry run", () => {
-    expect(buildSkillWorkflowInstructions(SkillWorkflowDelivery.AGENT, true)).toContain("DRY RUN");
+    expect(buildSkillWorkflowInstructions(true)).toContain("DRY RUN");
   });
 });
 

@@ -1,21 +1,17 @@
 import { resolveSkillWorkflowInputs, resolveSkillWorkflowSecrets } from "~/flows/skill-workflow/inputs";
-import {
-  SkillWorkflowConfigError,
-  SkillWorkflowDelivery,
-  type SkillWorkflowManifest
-} from "~/flows/skill-workflow/manifest";
+import { SkillWorkflowConfigError, type SkillWorkflowManifest } from "~/flows/skill-workflow/manifest";
 
 function manifestWith(overrides: Partial<SkillWorkflowManifest> = {}): SkillWorkflowManifest {
   return {
     skill: "do-ticket",
-    delivery: SkillWorkflowDelivery.AGENT,
     inputs: {
       ticket: { required: true, pattern: "[A-Z]+-\\d+", maxLength: 20 },
       hint: { required: false, maxLength: 10 }
     },
     secrets: [],
     agentEnv: [],
-    mcpServers: [],
+    mcpServers: {},
+    setup: [],
     ...overrides
   };
 }

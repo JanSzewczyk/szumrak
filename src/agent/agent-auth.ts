@@ -59,6 +59,15 @@ function isPassthroughVar(name: string): boolean {
 }
 
 /**
+ * The allowlisted slice of `process.env` — no credentials of any kind. The
+ * base of the agent's subprocess environment, and on its own the environment
+ * of anything else Szumrak runs on the agent's behalf (skill workflow setup).
+ */
+export function passthroughEnv(): Record<string, string | undefined> {
+  return Object.fromEntries(Object.entries(process.env).filter(([name]) => isPassthroughVar(name)));
+}
+
+/**
  * Picks exactly one credential for the Claude Code subprocess the SDK spawns.
  * `CLAUDE_CODE_OAUTH_TOKEN` (subscription) wins over `ANTHROPIC_API_KEY` —
  * Claude Code itself prefers the API key when both are present, so only the
@@ -72,9 +81,7 @@ function isPassthroughVar(name: string): boolean {
  * the allowlist is added explicitly by the caller (see RunAgentOptions.env).
  */
 export function resolveAgentAuth(): AgentAuth {
-  const subprocessEnv: Record<string, string | undefined> = Object.fromEntries(
-    Object.entries(process.env).filter(([name]) => isPassthroughVar(name))
-  );
+  const subprocessEnv = passthroughEnv();
 
   if (env.CLAUDE_CODE_OAUTH_TOKEN) {
     subprocessEnv.CLAUDE_CODE_OAUTH_TOKEN = env.CLAUDE_CODE_OAUTH_TOKEN;

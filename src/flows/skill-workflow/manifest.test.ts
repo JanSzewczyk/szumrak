@@ -1,11 +1,6 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import {
-  loadSkillWorkflowManifest,
-  renderSkillArgs,
-  SkillWorkflowConfigError,
-  SkillWorkflowDelivery
-} from "~/flows/skill-workflow/manifest";
+import { loadSkillWorkflowManifest, renderSkillArgs, SkillWorkflowConfigError } from "~/flows/skill-workflow/manifest";
 
 vi.mock("node:fs", () => ({
   existsSync: vi.fn(),
@@ -26,9 +21,13 @@ const VALID_MANIFEST = {
   skill: "do-ticket",
   args: "{{inputs.ticket}}",
   inputs: { ticket: { required: true, pattern: "[A-Z]+-\\d+" } },
-  delivery: SkillWorkflowDelivery.AGENT,
   secrets: ["JIRA_API_TOKEN"],
-  mcpServers: ["atlassian"]
+  mcpServers: {
+    atlassian: ".mcp.json",
+    sentry: { type: "http", url: "https://mcp.sentry.dev/mcp", headers: { Authorization: "Bearer token" } },
+    local: { command: "npx", args: ["-y", "some-mcp"] }
+  },
+  setup: ["npm install -g @acme/cli"]
 };
 
 describe("loadSkillWorkflowManifest", () => {
@@ -43,7 +42,6 @@ describe("loadSkillWorkflowManifest", () => {
 
     expect(manifest).toMatchObject({
       skill: "do-ticket",
-      delivery: SkillWorkflowDelivery.AGENT,
       agentEnv: [],
       inputs: { ticket: { required: true, maxLength: 500 } }
     });
@@ -64,7 +62,11 @@ describe("loadSkillWorkflowManifest", () => {
 
   test.each([
     ["an unknown key", { ...VALID_MANIFEST, maxturns: 10 }],
-    ["a missing delivery", { ...VALID_MANIFEST, delivery: undefined }],
+    ["a delivery setting, which no longer exists", { ...VALID_MANIFEST, delivery: "agent" }],
+    ["an MCP server reference other than .mcp.json", { ...VALID_MANIFEST, mcpServers: { atlassian: "atlassian" } }],
+    ["an MCP server with neither command nor url", { ...VALID_MANIFEST, mcpServers: { broken: { args: ["x"] } } }],
+    ["a remote MCP server without a transport type", { ...VALID_MANIFEST, mcpServers: { r: { url: "https://x" } } }],
+    ["an empty setup command", { ...VALID_MANIFEST, setup: [""] }],
     ["an agentEnv entry not listed in secrets", { ...VALID_MANIFEST, agentEnv: ["GH_ENTERPRISE_TOKEN"] }],
     ["an args placeholder for an undeclared input", { ...VALID_MANIFEST, args: "{{inputs.project}}" }],
     ["an invalid input pattern", { ...VALID_MANIFEST, inputs: { ticket: { pattern: "[" } } }],

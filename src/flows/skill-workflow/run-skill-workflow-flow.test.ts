@@ -2,14 +2,11 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { runAgent } from "~/agent/run-agent";
-import { runVerifyCommands } from "~/agent/verify";
 import { SkillWorkflowStatus } from "~/flows/skill-workflow/instructions";
-import { SkillWorkflowDelivery } from "~/flows/skill-workflow/manifest";
-import { buildDedupMarker, runSkillWorkflowFlow, withEntrySkill } from "~/flows/skill-workflow/run-skill-workflow-flow";
-import { createScopedInstallationToken, octokit } from "~/github/client";
-import { findOpenPRWithMarker } from "~/github/dedup";
+import { runSkillWorkflowFlow, withEntrySkill } from "~/flows/skill-workflow/run-skill-workflow-flow";
+import { runSkillWorkflowSetup, SkillWorkflowSetupError } from "~/flows/skill-workflow/setup";
+import { createScopedInstallationToken } from "~/github/client";
 import { configureGitRemoteAuth } from "~/github/git-operations";
-import { commitAndOpenPR } from "~/github/pull-requests";
 import { registerSecretValues } from "~/platform/logger";
 import { writeStepSummary } from "~/platform/summary";
 import { agentRunResultBuilder } from "~/test/builders/agent-run-result.builder";
@@ -24,28 +21,17 @@ vi.mock("~/agent/run-agent", () => ({
   runAgent: vi.fn()
 }));
 
-vi.mock("~/agent/verify", () => ({
-  runVerifyCommands: vi.fn()
+vi.mock("~/flows/skill-workflow/setup", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("~/flows/skill-workflow/setup")>()),
+  runSkillWorkflowSetup: vi.fn()
 }));
 
 vi.mock("~/github/client", () => ({
-  createScopedInstallationToken: vi.fn(),
-  octokit: {
-    pulls: { get: vi.fn(), update: vi.fn() },
-    issues: { addLabels: vi.fn() }
-  }
-}));
-
-vi.mock("~/github/dedup", () => ({
-  findOpenPRWithMarker: vi.fn()
+  createScopedInstallationToken: vi.fn()
 }));
 
 vi.mock("~/github/git-operations", () => ({
   configureGitRemoteAuth: vi.fn()
-}));
-
-vi.mock("~/github/pull-requests", () => ({
-  commitAndOpenPR: vi.fn()
 }));
 
 vi.mock("~/platform/logger", () => ({
@@ -60,16 +46,11 @@ vi.mock("~/platform/summary", () => ({
 const mockedExistsSync = vi.mocked(existsSync);
 const mockedReadFileSync = vi.mocked(readFileSync);
 const mockedRunAgent = vi.mocked(runAgent);
-const mockedRunVerifyCommands = vi.mocked(runVerifyCommands);
+const mockedRunSetup = vi.mocked(runSkillWorkflowSetup);
 const mockedCreateScopedToken = vi.mocked(createScopedInstallationToken);
-const mockedFindOpenPRWithMarker = vi.mocked(findOpenPRWithMarker);
 const mockedConfigureGitRemoteAuth = vi.mocked(configureGitRemoteAuth);
-const mockedCommitAndOpenPR = vi.mocked(commitAndOpenPR);
 const mockedRegisterSecretValues = vi.mocked(registerSecretValues);
 const mockedWriteStepSummary = vi.mocked(writeStepSummary);
-const mockedPullsGet = vi.mocked(octokit.pulls.get);
-const mockedPullsUpdate = vi.mocked(octokit.pulls.update);
-const mockedAddLabels = vi.mocked(octokit.issues.addLabels);
 
 const WORKSPACE = "/workspace";
 const MANIFEST_PATH = join(WORKSPACE, ".claude", "szumrak", "skill-workflows", "do-ticket.json");
@@ -77,9 +58,10 @@ const SKILL_PATH = join(WORKSPACE, ".claude", "skills", "do-ticket", "SKILL.md")
 const MCP_PATH = join(WORKSPACE, ".mcp.json");
 const AGENT_CONFIG_PATH = join(WORKSPACE, ".claude", "agent-config.json");
 
-const PR_URL = "https://github.com/acme/app/pull/7";
 const INPUTS = JSON.stringify({ ticket: "PROJ-1" });
 const SECRETS = JSON.stringify({ JIRA_API_TOKEN: "jira-t0ken", JIRA_CLI_TOKEN: "cli-t0ken" });
+const WRITE_PERMISSIONS = { contents: GitHubAccess.WRITE, pull_requests: GitHubAccess.WRITE };
+const SUMMARY = "Implemented PROJ-1 in https://github.com/acme/app/pull/7";
 
 type Files = Record<string, unknown>;
 
@@ -99,10 +81,11 @@ function manifest(overrides: Record<string, unknown> = {}) {
     skill: "do-ticket",
     args: "{{inputs.ticket}}",
     inputs: { ticket: { required: true, pattern: "[A-Z]+-\\d+" } },
-    delivery: SkillWorkflowDelivery.AGENT,
     secrets: ["JIRA_API_TOKEN", "JIRA_CLI_TOKEN"],
     agentEnv: ["JIRA_CLI_TOKEN"],
-    mcpServers: ["atlassian"],
+    mcpServers: { atlassian: ".mcp.json" },
+    github: { permissions: WRITE_PERMISSIONS },
+    setup: ["npm install -g jira-cli"],
     ...overrides
   };
 }
@@ -116,23 +99,14 @@ function standardFiles(manifestOverrides: Record<string, unknown> = {}): Files {
   };
 }
 
-function completedRun(output: Record<string, unknown> = {}) {
-  return agentRunResultBuilder.one({
-    overrides: {
-      structuredOutput: { status: SkillWorkflowStatus.COMPLETED, summary: "Implemented PROJ-1", ...output }
-    }
-  });
+function withoutFile(files: Files, path: string): Files {
+  return Object.fromEntries(Object.entries(files).filter(([candidate]) => candidate !== path));
 }
 
-function pullRequest(overrides: { headRef?: string; headRepo?: string } = {}) {
-  return {
-    data: {
-      html_url: PR_URL,
-      body: "Implements PROJ-1",
-      head: { ref: overrides.headRef ?? "feat/proj-1", repo: { full_name: overrides.headRepo ?? "acme/app" } },
-      base: { repo: { default_branch: "main", full_name: "acme/app" } }
-    }
-  } as never;
+function completedRun() {
+  return agentRunResultBuilder.one({
+    overrides: { structuredOutput: { status: SkillWorkflowStatus.COMPLETED, summary: SUMMARY } }
+  });
 }
 
 describe("runSkillWorkflowFlow", () => {
@@ -141,12 +115,7 @@ describe("runSkillWorkflowFlow", () => {
     process.env.WORKSPACE_PATH = WORKSPACE;
     process.env.REPO = "acme/app";
     delete process.env.DRY_RUN;
-    mockedFindOpenPRWithMarker.mockResolvedValue(null);
     mockedCreateScopedToken.mockResolvedValue("ghs_scopedtoken");
-    mockedPullsGet.mockResolvedValue(pullRequest());
-    mockedPullsUpdate.mockResolvedValue({} as never);
-    mockedAddLabels.mockResolvedValue({} as never);
-    mockedRunVerifyCommands.mockReturnValue({ passed: true, report: "" });
   });
 
   afterEach(() => {
@@ -161,26 +130,60 @@ describe("runSkillWorkflowFlow", () => {
       ["a declared secret is missing", standardFiles(), INPUTS, "{}", /Missing secrets/],
       [
         "the entry skill does not exist",
-        { ...standardFiles(), [SKILL_PATH]: undefined },
+        withoutFile(standardFiles(), SKILL_PATH),
         INPUTS,
         SECRETS,
         /Skill "do-ticket" not found/
+      ],
+      [
+        "an MCP server is taken from a missing .mcp.json",
+        withoutFile(standardFiles(), MCP_PATH),
+        INPUTS,
+        SECRETS,
+        /define them inline/
       ]
-    ])("fails without running the agent when %s", async (_, files, rawInputs, rawSecrets, message) => {
-      filesOnDisk(Object.fromEntries(Object.entries(files).filter(([, content]) => content !== undefined)));
+    ])("fails without running setup or the agent when %s", async (_, files, rawInputs, rawSecrets, message) => {
+      filesOnDisk(files);
 
       const result = await runSkillWorkflowFlow({ name: "do-ticket", rawInputs, rawSecrets });
 
       expect(result).toEqual({ succeeded: false });
+      expect(mockedRunSetup).not.toHaveBeenCalled();
       expect(mockedRunAgent).not.toHaveBeenCalled();
       expect(mockedWriteStepSummary).toHaveBeenCalledWith(expect.stringMatching(message));
     });
   });
 
-  describe("agent run setup", () => {
+  describe("setup", () => {
     beforeEach(() => {
       filesOnDisk(standardFiles());
-      mockedRunAgent.mockResolvedValue(completedRun({ pullRequestUrl: PR_URL }));
+      mockedRunAgent.mockResolvedValue(completedRun());
+    });
+
+    test("runs the manifest's setup commands in the workspace before the agent", async () => {
+      await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
+
+      expect(mockedRunSetup).toHaveBeenCalledWith(["npm install -g jira-cli"], WORKSPACE);
+      expect(mockedRunSetup.mock.invocationCallOrder[0]).toBeLessThan(mockedRunAgent.mock.invocationCallOrder[0]);
+    });
+
+    test("fails without running the agent when a setup command fails", async () => {
+      mockedRunSetup.mockImplementationOnce(() => {
+        throw new SkillWorkflowSetupError("Setup command `npm install -g jira-cli` failed:\nE404");
+      });
+
+      const result = await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
+
+      expect(result).toEqual({ succeeded: false });
+      expect(mockedRunAgent).not.toHaveBeenCalled();
+      expect(mockedWriteStepSummary).toHaveBeenCalledWith(expect.stringContaining("setup failed"));
+    });
+  });
+
+  describe("agent environment", () => {
+    beforeEach(() => {
+      filesOnDisk(standardFiles());
+      mockedRunAgent.mockResolvedValue(completedRun());
     });
 
     test("registers every secret and the scoped token for log redaction", async () => {
@@ -190,14 +193,39 @@ describe("runSkillWorkflowFlow", () => {
       expect(mockedRegisterSecretValues).toHaveBeenCalledWith(["ghs_scopedtoken"]);
     });
 
-    test("mints a repo-scoped token with the default agent-delivery permissions and wires it into git", async () => {
+    test("mints a repo-scoped token with the manifest's permissions and wires it into git", async () => {
       await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
 
-      expect(mockedCreateScopedToken).toHaveBeenCalledWith("app", {
-        contents: GitHubAccess.WRITE,
-        pull_requests: GitHubAccess.WRITE
-      });
+      expect(mockedCreateScopedToken).toHaveBeenCalledWith("app", WRITE_PERMISSIONS);
       expect(mockedConfigureGitRemoteAuth).toHaveBeenCalledWith("acme", "app", "ghs_scopedtoken");
+    });
+
+    test("mints no token when the manifest declares no GitHub permissions", async () => {
+      filesOnDisk(standardFiles({ github: undefined }));
+
+      await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
+
+      expect(mockedCreateScopedToken).not.toHaveBeenCalled();
+      expect(mockedConfigureGitRemoteAuth).not.toHaveBeenCalled();
+      expect(mockedRunAgent.mock.calls[0][1]?.env).not.toHaveProperty("GH_TOKEN");
+    });
+
+    test("leaves the git remote alone when the token has no contents write access", async () => {
+      filesOnDisk(standardFiles({ github: { permissions: { issues: GitHubAccess.WRITE } } }));
+
+      await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
+
+      expect(mockedCreateScopedToken).toHaveBeenCalledWith("app", { issues: GitHubAccess.WRITE });
+      expect(mockedConfigureGitRemoteAuth).not.toHaveBeenCalled();
+    });
+
+    test("mints no token in a dry run", async () => {
+      process.env.DRY_RUN = "true";
+
+      await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
+
+      expect(mockedCreateScopedToken).not.toHaveBeenCalled();
+      expect(mockedRunAgent.mock.calls[0][1]?.env).not.toHaveProperty("GH_TOKEN");
     });
 
     test("passes only agentEnv secrets and the scoped token into the agent environment", async () => {
@@ -212,7 +240,7 @@ describe("runSkillWorkflowFlow", () => {
       expect(options?.env).not.toHaveProperty("JIRA_API_TOKEN");
     });
 
-    test("gives the MCP server its secret and requests structured output", async () => {
+    test("gives a .mcp.json server its secret and requests structured output", async () => {
       await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
 
       const options = mockedRunAgent.mock.calls[0][1];
@@ -220,15 +248,38 @@ describe("runSkillWorkflowFlow", () => {
       expect(options?.outputFormat?.type).toBe("json_schema");
     });
 
-    test("always denies edits to Szumrak's own configuration and adds agent-delivery guardrails", async () => {
+    test("uses an inline MCP server when the repo has no .mcp.json", async () => {
+      filesOnDisk(
+        withoutFile(
+          standardFiles({ mcpServers: { atlassian: { command: "npx", args: ["-y", "mcp-atlassian"] } } }),
+          MCP_PATH
+        )
+      );
+
       await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
 
-      const deny = mockedRunAgent.mock.calls[0][1]?.permissions?.deny;
-      expect(deny).toEqual(
+      expect(mockedRunAgent.mock.calls[0][1]?.mcpServers).toEqual({
+        atlassian: { command: "npx", args: ["-y", "mcp-atlassian"] }
+      });
+    });
+
+    test("passes no MCP servers when the manifest declares none", async () => {
+      filesOnDisk(standardFiles({ mcpServers: undefined }));
+
+      await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
+
+      expect(mockedRunAgent.mock.calls[0][1]?.mcpServers).toBeUndefined();
+    });
+
+    test("always denies edits to Szumrak's own configuration and adds git guardrails", async () => {
+      await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
+
+      expect(mockedRunAgent.mock.calls[0][1]?.permissions?.deny).toEqual(
         expect.arrayContaining([
           "Edit(.claude/szumrak/**)",
           "Edit(.claude/agent-config.json)",
-          "Bash(git push --force*)"
+          "Bash(git push --force*)",
+          "Bash(gh pr merge*)"
         ])
       );
     });
@@ -244,31 +295,29 @@ describe("runSkillWorkflowFlow", () => {
 
       expect(mockedRunAgent.mock.calls[0][0]).toContain("Skill arguments: PROJ-1");
     });
-
-    test("skips the run when an open PR already carries the dedup marker", async () => {
-      mockedFindOpenPRWithMarker.mockResolvedValue(PR_URL);
-
-      const result = await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
-
-      expect(result).toEqual({ succeeded: true });
-      expect(mockedRunAgent).not.toHaveBeenCalled();
-      expect(mockedCreateScopedToken).not.toHaveBeenCalled();
-    });
-
-    test("mints no token and checks no duplicates in a dry run", async () => {
-      process.env.DRY_RUN = "true";
-
-      await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
-
-      expect(mockedFindOpenPRWithMarker).not.toHaveBeenCalled();
-      expect(mockedCreateScopedToken).not.toHaveBeenCalled();
-      expect(mockedRunAgent.mock.calls[0][1]?.env).not.toHaveProperty("GH_TOKEN");
-    });
   });
 
   describe("outcome", () => {
     beforeEach(() => {
       filesOnDisk(standardFiles());
+    });
+
+    test("succeeds and reports the skill's own summary when it completes", async () => {
+      mockedRunAgent.mockResolvedValue(completedRun());
+
+      const result = await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
+
+      expect(result).toEqual({ succeeded: true });
+      expect(mockedWriteStepSummary).toHaveBeenCalledWith(expect.stringContaining(SUMMARY), "✅");
+    });
+
+    test("marks the summary of a dry run", async () => {
+      process.env.DRY_RUN = "true";
+      mockedRunAgent.mockResolvedValue(completedRun());
+
+      await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
+
+      expect(mockedWriteStepSummary).toHaveBeenCalledWith(expect.stringContaining("(dry run)"), "✅");
     });
 
     test("fails when the agent run fails", async () => {
@@ -300,130 +349,6 @@ describe("runSkillWorkflowFlow", () => {
       expect(result).toEqual({ succeeded: false });
       expect(mockedWriteStepSummary).toHaveBeenCalledWith(expect.stringContaining("Ticket has no specs"), "⚠️");
     });
-  });
-
-  describe("agent delivery", () => {
-    beforeEach(() => {
-      filesOnDisk(standardFiles());
-    });
-
-    test("labels the reported PR and appends the dedup marker and run info to its body", async () => {
-      mockedRunAgent.mockResolvedValue(completedRun({ pullRequestUrl: PR_URL }));
-
-      const result = await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
-
-      expect(result).toEqual({ succeeded: true });
-      expect(mockedAddLabels).toHaveBeenCalledWith(
-        expect.objectContaining({ issue_number: 7, labels: ["ai-generated"] })
-      );
-      const body = mockedPullsUpdate.mock.calls[0][0]?.body;
-      expect(body).toContain("Implements PROJ-1");
-      expect(body).toContain(buildDedupMarker("do-ticket", { ticket: "PROJ-1" }));
-    });
-
-    test("succeeds without touching GitHub when the skill opened no PR", async () => {
-      mockedRunAgent.mockResolvedValue(completedRun());
-
-      const result = await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
-
-      expect(result).toEqual({ succeeded: true });
-      expect(mockedPullsGet).not.toHaveBeenCalled();
-    });
-
-    test("rejects a PR URL that points at another repository", async () => {
-      mockedRunAgent.mockResolvedValue(completedRun({ pullRequestUrl: "https://github.com/evil/app/pull/7" }));
-
-      const result = await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
-
-      expect(result).toEqual({ succeeded: false });
-      expect(mockedPullsGet).not.toHaveBeenCalled();
-    });
-
-    test.each([
-      ["whose head is the default branch", { headRef: "main" }],
-      ["whose head lives in a fork", { headRepo: "someone/app" }]
-    ])("rejects a PR %s", async (_, overrides) => {
-      mockedRunAgent.mockResolvedValue(completedRun({ pullRequestUrl: PR_URL }));
-      mockedPullsGet.mockResolvedValue(pullRequest(overrides));
-
-      const result = await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
-
-      expect(result).toEqual({ succeeded: false });
-      expect(mockedAddLabels).not.toHaveBeenCalled();
-    });
-
-    test("still succeeds when labelling the PR fails", async () => {
-      mockedRunAgent.mockResolvedValue(completedRun({ pullRequestUrl: PR_URL }));
-      mockedAddLabels.mockRejectedValue(new Error("label API down"));
-
-      const result = await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
-
-      expect(result).toEqual({ succeeded: true });
-    });
-  });
-
-  describe("engine delivery", () => {
-    beforeEach(() => {
-      filesOnDisk(standardFiles({ delivery: SkillWorkflowDelivery.ENGINE }));
-    });
-
-    test("denies the skill its own git/PR delivery steps", async () => {
-      mockedRunAgent.mockResolvedValue(completedRun());
-      mockedCommitAndOpenPR.mockResolvedValue(PR_URL);
-
-      await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
-
-      expect(mockedRunAgent.mock.calls[0][1]?.permissions?.deny).toEqual(
-        expect.arrayContaining(["Bash(git commit*)", "Bash(git push*)", "Bash(gh pr create*)"])
-      );
-    });
-
-    test("does not mint an agent token when no GitHub permissions are declared", async () => {
-      mockedRunAgent.mockResolvedValue(completedRun());
-      mockedCommitAndOpenPR.mockResolvedValue(PR_URL);
-
-      await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
-
-      expect(mockedCreateScopedToken).not.toHaveBeenCalled();
-    });
-
-    test("opens the PR itself with a review-followup-compatible body and the agent's commit metadata", async () => {
-      mockedRunAgent.mockResolvedValue(
-        completedRun({ commit: { type: "feat", subject: "add ticket view", branch: "ticket-view" } })
-      );
-      mockedCommitAndOpenPR.mockResolvedValue(PR_URL);
-
-      const result = await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
-
-      expect(result).toEqual({ succeeded: true });
-      const [, body, commitMetadata] = mockedCommitAndOpenPR.mock.calls[0];
-      expect(body).toMatch(/^Task:\n[\s\S]*\n\nGenerated automatically by Szumrak\./);
-      expect(body).toContain(buildDedupMarker("do-ticket", { ticket: "PROJ-1" }));
-      expect(commitMetadata).toMatchObject({ type: "feat", branchSlug: "ticket-view" });
-    });
-
-    test("does not open a PR when the verify gate fails", async () => {
-      mockedRunAgent.mockResolvedValue(completedRun());
-      mockedRunVerifyCommands.mockReturnValue({ passed: false, report: "$ npm run lint\nerror" });
-
-      const result = await runSkillWorkflowFlow({ name: "do-ticket", rawInputs: INPUTS, rawSecrets: SECRETS });
-
-      expect(result).toEqual({ succeeded: false });
-      expect(mockedCommitAndOpenPR).not.toHaveBeenCalled();
-    });
-  });
-});
-
-describe("buildDedupMarker", () => {
-  test("is independent of input key order", () => {
-    expect(buildDedupMarker("x", { a: "1", b: "2" })).toBe(buildDedupMarker("x", { b: "2", a: "1" }));
-  });
-
-  test("never embeds raw input text in the HTML comment", () => {
-    const marker = buildDedupMarker("x", { ticket: "--> <script>" });
-
-    expect(marker).not.toContain("script");
-    expect(marker).toMatch(/^<!-- szumrak-skill-workflow:x:[0-9a-f]{16} -->$/);
   });
 });
 

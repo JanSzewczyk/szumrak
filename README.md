@@ -226,16 +226,18 @@ pins the *Docker image* built inside the reusable workflow, not the workflow YAM
   gate. A question unrelated to the repository still succeeds — the agent declines explicitly
   instead of answering off-topic.
 - **`skill-workflow`** (`MODE=skill-workflow`) — runs a **skill that lives in the target repo**
-  end to end (e.g. "fetch Jira ticket → implement → branch → commit → open PR"), described by a
-  manifest in the target repo. The process itself is the target repo's; Szumrak prepares exactly
-  the environment the manifest declares (inputs, secrets, MCP servers, a scoped GitHub token),
-  runs the skill, and checks the result. See [Skill workflows](#-skill-workflows).
+  end to end, whatever that skill does (implement a ticket and open a PR, triage an issue, write a
+  report…), described by a manifest in the target repo. The process — including whether anything
+  gets committed or a PR opened — belongs entirely to the skill; Szumrak only orchestrates: it
+  prepares exactly the environment the manifest declares (inputs, secrets, setup commands for
+  CLIs, MCP servers, an optional scoped GitHub token), runs the skill under its guardrails, and
+  reports the skill's result. See [Skill workflows](#-skill-workflows).
 
 ```text
 MODE=runner              checkout main → run agent → commit → open new PR
 MODE=review-followup     checkout PR branch → run agent → commit → push to same PR
 MODE=ask                 run agent read-only → write answer to GITHUB_STEP_SUMMARY (no PR)
-MODE=skill-workflow      load manifest → prepare secrets/MCP/token → run skill → verify its PR (or open one)
+MODE=skill-workflow      load manifest → setup/secrets/MCP/token → run skill → report its result
 ```
 
 ---
@@ -253,31 +255,50 @@ and what it's allowed to do. See
   "skill": "do-ticket",                        // entry skill, invoked via the Skill tool
   "args": "{{inputs.ticket}}",                 // skill arguments, filled from validated inputs
   "inputs": { "ticket": { "required": true, "pattern": "[A-Z][A-Z0-9]+-\\d+", "maxLength": 32 } },
-  "delivery": "agent",                         // agent: the skill opens the PR itself | engine: Szumrak does
   "model": "sonnet", "maxTurns": 80, "maxDurationMinutes": 35, "maxBudgetUsd": 5,
   "secrets": ["JIRA_URL", "JIRA_EMAIL", "JIRA_API_TOKEN"], // the only secrets forwarded to the run
   "agentEnv": [],                              // secrets exposed to the agent's own env (for CLIs)
-  "mcpServers": ["atlassian"],                 // servers from the repo's .mcp.json — all required
-  "github": { "permissions": { "contents": "write", "pull_requests": "write" } },
+  "setup": ["npm install -g @acme/cli"],       // commands run before the agent — install the CLIs it needs
+  "mcpServers": {                              // every server the run gets — all required to connect
+    "atlassian": ".mcp.json",                  // definition taken from the repo's .mcp.json
+    "sentry": { "type": "http", "url": "https://mcp.sentry.dev/mcp", "headers": { "Authorization": "Bearer ${SENTRY_TOKEN}" } }
+  },
+  "github": { "permissions": { "contents": "write", "pull_requests": "write" } }, // omit = no token
   "permissions": { "allow": ["Bash(gh pr create *)", "mcp__atlassian__*"] }
 }
 ```
 
-**How credentials reach the run** — least privilege, per workflow:
+The skill decides what the run produces. Szumrak doesn't commit, open or label PRs, or skip
+re-runs for this flow: if the skill should open a PR, it does so itself with the token below (the
+PR is then authored by the Szumrak GitHub App); if it should be idempotent (e.g. "this ticket
+already has a PR"), it checks that itself.
 
-- **GitHub (`gh`, `git push`)** — Szumrak mints a GitHub App installation token scoped to *this
-  repo only* and to `github.permissions` (default for `delivery: agent`: contents + pull requests
-  write), valid for an hour. It's exported as `GH_TOKEN`/`GITHUB_TOKEN` and set on the git
-  remote. The App's private key never reaches the agent. `workflows: write` is opt-in only: with
-  it the agent could push a branch carrying a new workflow file that runs with every repo secret.
-- **MCP servers (preferred for third-party APIs)** — defined in the target repo's `.mcp.json`
-  (the same file developers use interactively), selected by `mcpServers`, passed to the SDK with
-  `strictMcpConfig` so no other server loads. `${VAR}` references are expanded **only** from the
+**What the run gets** — least privilege, per workflow:
+
+- **GitHub (`gh`, `git push`)** — only when the manifest declares `github.permissions`: Szumrak
+  mints a GitHub App installation token scoped to *this repo only* and to exactly those
+  permissions, valid for an hour. It's exported as `GH_TOKEN`/`GITHUB_TOKEN` and, with
+  `contents: write`, set on the git remote. No `github` block, no token. The App's private key
+  never reaches the agent. `workflows: write` is opt-in only: with it the agent could push a
+  branch carrying a new workflow file that runs with every repo secret.
+- **MCP servers (preferred for third-party APIs)** — every server in `mcpServers` is either
+  defined inline in the manifest (stdio `command`/`args`/`env`, or `type: "http"`/`"sse"` with
+  `url`/`headers`) or set to `".mcp.json"` to take its definition from the target repo's
+  `.mcp.json`. A developer's global/user MCP configuration is never used — a CI run doesn't have
+  it — so a repo without `.mcp.json` defines its servers inline. They're passed to the SDK with
+  `strictMcpConfig`, so no other server loads. `${VAR}` references are expanded **only** from the
   manifest's declared `secrets`, so a secret lands in that server's `env`/`headers`, not in the
   agent's shell. A server that reports `failed`/`needs-auth` at session start aborts the run
-  before any work.
-- **CLIs** — a secret listed in `agentEnv` becomes a plain env var of the agent (and is therefore
-  readable by it). Use it only when a CLI has no MCP alternative.
+  before any work — remote servers that need an interactive OAuth login can't work in CI; use
+  ones that take a token in `headers`/`env`.
+- **CLIs** — the image ships `git`, `gh` and Node/npm. Anything else is installed by `setup`:
+  shell commands run in order in the workspace before the agent starts (the container runs as
+  root, so `apt-get install -y …` works). They get the agent's allowlisted environment without
+  any secrets, and inputs are never interpolated into them; the first failing command fails the
+  run. `setup` runs wherever the engine runs, so try manifests with setup at Level 2 (Docker),
+  not directly on your machine. A secret listed in `agentEnv` becomes a plain env var of the
+  agent (and is therefore readable by it) — for CLIs that read credentials from the
+  environment. Allow the CLI's commands in `permissions.allow`.
 - **Everything else** — the agent's environment is an allowlist (`src/agent/agent-auth.ts`): no
   `GH_APP_*`, no undeclared secrets. Every forwarded secret value is redacted verbatim from
   `agent-run.jsonl`.
@@ -285,12 +306,10 @@ and what it's allowed to do. See
 **Guardrails Szumrak adds regardless of the manifest:** the manifest and `agent-config.json` are
 read from the default branch; the agent can't edit `.claude/agent-config.json` or
 `.claude/szumrak/**`; inputs are validated against the manifest (undeclared keys rejected,
-`pattern` fully anchored); for `delivery: agent`, force-pushes/pushes to `main`/`master`/`gh pr
-merge` are denied and the reported PR must belong to this repo on a non-default branch (branch
-protection on the default branch is still the real guard). The run ends with a structured
-result (`completed`/`blocked`, summary, PR URL or commit metadata) instead of free text; the PR is
-labelled `ai-generated`, gets the cost table and a hidden marker used to skip re-runs with the
-same inputs while it's open.
+`pattern` fully anchored); force-pushes, pushes to `main`/`master` and `gh pr merge` are denied
+(branch protection on the default branch is still the real guard). The run ends with a
+structured result (`completed`/`blocked` plus the skill's own summary) instead of free text; it
+lands in the job summary, and `blocked` fails the job.
 
 Trigger it with `target-repo-templates/.github/workflows/szumrak-skill-workflow.yml` (a
 `workflow_dispatch` job taking `skill_workflow` + JSON `inputs`, plus a `repository_dispatch`
