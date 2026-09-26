@@ -8,7 +8,7 @@ import { appendRunInfo } from "~/github/run-info";
 import { env } from "~/platform/env";
 import { log } from "~/platform/logger";
 import { writeStepSummary } from "~/platform/summary";
-import type { FlowResult } from "../types";
+import type { FlowResult } from "~/types/flow-result";
 
 export interface RunnerFlowInput {
   task: string;

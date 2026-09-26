@@ -1,7 +1,7 @@
 import { runAgent } from "~/agent/run-agent";
-import type { FlowResult } from "~/flows/types";
 import { log } from "~/platform/logger";
 import { writeStepSummary } from "~/platform/summary";
+import type { FlowResult } from "~/types/flow-result";
 
 export interface AskFlowInput {
   question: string;

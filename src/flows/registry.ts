@@ -1,9 +1,9 @@
+import type { FlowResult } from "~/types/flow-result";
 import { Mode } from "~/types/mode";
 import { type AskFlowInput, runAskFlow } from "./ask/run-ask-flow";
 import { type ReviewFollowUpFlowInput, runReviewFollowUp } from "./review-followup/run-review-followup-flow";
 import { type RunnerFlowInput, runRunnerFlow } from "./runner/run-runner-flow";
 import { runSkillWorkflowFlow, type SkillWorkflowFlowInput } from "./skill-workflow/run-skill-workflow-flow";
-import type { FlowResult } from "./types";
 
 /**
  * Maps each {@link Mode} to the exact input its flow needs — not a
