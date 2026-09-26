@@ -1,0 +1,67 @@
+# Reference template — copy into the target repo's .github/workflows/szumrak-skill-workflow.yml.
+# Runs one of the target repo's own skill workflows (MODE=skill-workflow): a skill
+# from .claude/skills/ driven end to end by its manifest in
+# .claude/szumrak/skill-workflows/<name>.json. All of the run logic (checkout of
+# the default branch, secret filtering, Docker build/run, log upload) lives in the
+# `_skill-workflow.yml` reusable workflow hosted in JanSzewczyk/szumrak — this file
+# only wires triggers to it.
+#
+# Version the `uses: .../@ref` below to `main` (default) or pin it to a release
+# tag, same as szumrak-worker.yml. Independent from `szumrakEngineVersion` in
+# `.claude/agent-config.json`, which pins the Docker image built inside it.
+#
+# Add one job per trigger you need. The generic `workflow_dispatch` job below runs
+# any skill workflow by name; the commented-out job shows a dedicated trigger
+# (a "do this Jira ticket" workflow started from a Jira automation rule).
+name: Szumrak Skill Workflow 🧩
+
+on:
+  workflow_dispatch:
+    inputs:
+      skill_workflow:
+        description: "Skill workflow to run (.claude/szumrak/skill-workflows/<name>.json)"
+        required: true
+      inputs:
+        description: 'Inputs as a JSON object, e.g. {"ticket": "PROJ-123"}'
+        required: false
+        default: "{}"
+  # repository_dispatch:
+  #   types: [szumrak-do-ticket]
+
+# Read-only is enough: Szumrak writes through its GitHub App, never GITHUB_TOKEN.
+# A called reusable workflow's `permissions:` are capped by the caller's — keep
+# this in sync with _skill-workflow.yml in JanSzewczyk/szumrak.
+permissions:
+  contents: read
+
+jobs:
+  run:
+    name: Run skill workflow 🧩
+    # Every run costs real Claude usage and can push branches — only the repo
+    # owner may start one by hand.
+    if: github.event_name == 'workflow_dispatch' && github.actor == github.repository_owner
+    uses: JanSzewczyk/szumrak/.github/workflows/_skill-workflow.yml@main
+    with:
+      skill_workflow: ${{ github.event.inputs.skill_workflow }}
+      inputs: ${{ github.event.inputs.inputs }}
+      agent_model: haiku
+      timeout_minutes: 40
+    # Required: the manifest decides which secrets are forwarded, so the reusable
+    # workflow needs access to all of them to pick from.
+    secrets: inherit
+
+  # do-ticket:
+  #   name: Do ticket 🎫
+  #   # Started by a Jira automation rule calling the GitHub API:
+  #   #   POST /repos/<owner>/<repo>/dispatches
+  #   #   {"event_type": "szumrak-do-ticket", "client_payload": {"ticket": "PROJ-123"}}
+  #   # (needs a token with write access to this repo, so only trusted automation can fire it).
+  #   if: github.event_name == 'repository_dispatch' && github.event.action == 'szumrak-do-ticket'
+  #   uses: JanSzewczyk/szumrak/.github/workflows/_skill-workflow.yml@main
+  #   with:
+  #     skill_workflow: do-ticket
+  #     # toJSON, never string interpolation into hand-written JSON: the payload is
+  #     # passed through as data, and Szumrak rejects undeclared keys and values
+  #     # that don't match the manifest's input pattern.
+  #     inputs: ${{ toJSON(github.event.client_payload) }}
+  #   secrets: inherit

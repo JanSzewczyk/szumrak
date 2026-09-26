@@ -13,10 +13,11 @@ target repository instead, with no commit/push/PR anywhere in that path — see 
 The critical distinction to hold in mind: **this repo never operates on itself.** It is a tool
 that acts on some other repo. `src/` is the engine; `target-repo-templates/` are files meant to
 be copied *into the target repo* (its `CLAUDE.md`, `.claude/agent-config.json`,
-`.github/workflows/szumrak-worker.yml`, `.github/workflows/szumrak-holmes.yml`), not consumed
-here. Each template workflow is a thin trigger wrapper around a same-named reusable workflow
-hosted in this repo's own `.github/workflows/_worker-run.yml` /
-`_worker-review-followup.yml` / `_holmes.yml` — the target repo's copy only wires up the
+`.github/workflows/szumrak-worker.yml`, `.github/workflows/szumrak-holmes.yml`,
+`.github/workflows/szumrak-skill-workflow.yml`, an example `.claude/szumrak/skill-workflows/*.json`
+manifest), not consumed here. Each template workflow is a thin trigger wrapper around a
+same-named reusable workflow hosted in this repo's own `.github/workflows/_worker-run.yml` /
+`_worker-review-followup.yml` / `_holmes.yml` / `_skill-workflow.yml` — the target repo's copy only wires up the
 `if:`/`with:` trigger and pins a `uses: JanSzewczyk/szumrak/.github/workflows/_*.yml@<ref>`
 version; the actual job body (checkout, engine-ref resolution, Docker build/run, log upload)
 lives here and updates for every target repo automatically when pinned to `@main`.
@@ -108,6 +109,28 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   since none of that is something Szumrak's own code can enforce deterministically. In CI this mode
   is invoked only through the separate `szumrak-holmes.yml` template / `_holmes.yml` reusable
   workflow (see above), never through `szumrak-worker.yml`.
+- **`Mode.SKILL_WORKFLOW`** (`MODE=skill-workflow`) — `flows/skill-workflow/run-skill-workflow-flow.ts`:
+  runs a skill that lives in the target repo end to end, driven by the target repo's manifest
+  `.claude/szumrak/skill-workflows/<SKILL_WORKFLOW>.json` (`flows/skill-workflow/manifest.ts`, strict
+  Zod schema). The *process* belongs to the target repo's skill; Szumrak only prepares the
+  environment the manifest declares and checks the outcome: validate `SKILL_WORKFLOW_INPUTS`
+  against the manifest's `inputs` (`inputs.ts`) and `SKILL_WORKFLOW_SECRETS` against its `secrets`
+  (every value `registerSecretValues`'d for log redaction) → check the entry skill's `SKILL.md`
+  exists → pick the manifest's `mcpServers` out of the repo's `.mcp.json`, expanding `${VAR}` from
+  declared secrets only (`mcp-servers.ts`) → dedup via a hashed HTML-comment marker on open PRs →
+  mint a repo- and permission-scoped installation token for the agent
+  (`createScopedInstallationToken`, exported as `GH_TOKEN`/`GITHUB_TOKEN` and set on the git
+  remote) → `runAgent` with a per-run profile (`systemPromptAppend` from `instructions.ts`,
+  model/turn/duration/budget limits, `agentEnv` secrets, merged permissions plus Szumrak's own
+  deny list, skills with the entry skill added, `mcpServers` in strict mode, and a JSON-schema
+  `outputFormat`) → parse the structured result (`completed`/`blocked`). `delivery: "agent"` means
+  the skill itself branches/commits/pushes/opens the PR — Szumrak then checks the reported PR
+  belongs to this repo on a non-default branch and adds the `ai-generated` label, run-info table
+  and dedup marker. `delivery: "engine"` means the skill only edits files and the flow runs the
+  runner-style `verify` gate + `commitAndOpenPR` itself, with a `Task:` body review-followup can
+  parse. In CI it runs only through the `szumrak-skill-workflow.yml` template / `_skill-workflow.yml`
+  reusable workflow, which checks out the **default branch** and forwards only the manifest's
+  declared secrets (from `secrets: inherit`) as `SKILL_WORKFLOW_SECRETS`.
 
 - **`agent/run-agent.ts`** wraps the SDK `query()` stream. `permissionMode: "acceptEdits"`,
   `maxTurns` from `env`. It walks the message stream: assistant tool-use/text blocks live under
@@ -121,10 +144,13 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   `hooks` of its own.
 - **`agent/agent-auth.ts`** (`resolveAgentAuth`) picks exactly one Claude credential for the SDK
   subprocess: `CLAUDE_CODE_OAUTH_TOKEN` (subscription, from `claude setup-token`) wins over
-  `ANTHROPIC_API_KEY`. `run-agent.ts` passes its `subprocessEnv` as the SDK `env` option (which
-  *replaces* the subprocess environment, hence the deliberate `process.env` spread) with the losing
-  variable deleted — Claude Code itself would otherwise prefer the API key. The chosen method is
-  logged as `authMethod` on `agent_start`; `platform/env.ts` fails fast when neither is set.
+  `ANTHROPIC_API_KEY`. `run-agent.ts` passes its `subprocessEnv` as the SDK `env` option, which
+  *replaces* the subprocess environment — so it's built from an **allowlist** of `process.env`
+  (PATH/HOME/locale/proxy/CA basics, `PASSTHROUGH_VARS`) plus only the winning credential, never a
+  spread: the agent can print its own env through Bash, and Szumrak's process holds
+  `GH_APP_PRIVATE_KEY`, skill workflow secrets and untrusted `TASK` text. Anything else a run needs
+  is added explicitly via `RunAgentOptions.env`. The chosen method is logged as `authMethod` on
+  `agent_start`; `platform/env.ts` fails fast when neither is set.
 - **`agent/agent-config.ts`** loads `<WORKSPACE_PATH>/.claude/agent-config.json`, the target
   repo's opt-in agent configuration (it replaced the earlier permissions-only
   `.claude/agent-permissions.json`, which is no longer read).
@@ -152,8 +178,10 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   human-facing `finalMessage`. This exists so the target repo's semantic-release parses a real
   commit type, not an always-`chore` placeholder.
 - **`github/pull-requests.ts`** does branch → commit → push → PR create (via the Octokit client
-  from `github/client.ts`) → add `ai-generated` label. The agent itself never runs git; all git/PR
-  work happens here, in Node, *after* the run. Branch name and commit message are driven by the
+  from `github/client.ts`) → add `ai-generated` label. In runner/review-followup the agent itself
+  never runs git; all git/PR work happens here, in Node, *after* the run. The one exception is a
+  skill workflow with `delivery: "agent"`, where the target repo's skill delivers the PR itself
+  with a scoped token (see `Mode.SKILL_WORKFLOW` above). Branch name and commit message are driven by the
   agent's own self-reported `CommitMetadata` (type/scope/subject/branch) when present — see above —
   falling back to `chore(agent): <task text>` when it's missing or unparsable.
 - **`github/repo.ts`** exports `parseRepo` (shared `REPO` → `{owner, repo}` split, used by
@@ -170,6 +198,9 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   lifecycle code needed for API calls. `getInstallationToken()` is a second, separate
   `createAppAuth` instance that returns the raw token string — needed because `git push` embeds the
   token directly in the remote URL, which Octokit's internal auth strategy doesn't expose.
+  `createScopedInstallationToken(repo, permissions)` mints the *agent's* token for skill
+  workflows: narrowed by GitHub to the one repo and the manifest's permissions, one-hour lifetime.
+  The unscoped installation token and the App key must never reach the agent.
 - **`platform/env.ts`** is the single source of validated configuration: `@t3-oss/env-core` + Zod
   parse `process.env` at import time (`emptyStringAsUndefined: true` so Docker/CI empty vars fall
   back to defaults). Invalid config prints a readable list and `process.exit(1)` before the agent
@@ -182,9 +213,11 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   `workflow_dispatch`-only trigger). Success stays a silent `ai-generated` PR + label.
 
 Config is entirely env-var driven and validated in `platform/env.ts`: `TASK` (required only for
-`MODE=runner`), `MODE` (`runner` default | `review-followup` | `ask`, backed by `types/mode.ts`'s
-`Mode` enum), `PR_NUMBER`/`REVIEW_FEEDBACK` (required only for `MODE=review-followup`),
-`QUESTION` (required only for `MODE=ask`, max 1000 chars), `WORKSPACE_PATH`,
+`MODE=runner`), `MODE` (`runner` default | `review-followup` | `ask` | `skill-workflow`, backed by
+`types/mode.ts`'s `Mode` enum), `PR_NUMBER`/`REVIEW_FEEDBACK` (required only for
+`MODE=review-followup`), `QUESTION` (required only for `MODE=ask`, max 1000 chars),
+`SKILL_WORKFLOW` (slug, required only for `MODE=skill-workflow`) / `SKILL_WORKFLOW_INPUTS` (JSON,
+default `{}`) / `SKILL_WORKFLOW_SECRETS` (JSON of the manifest's declared secrets), `WORKSPACE_PATH`,
 `REPO` (`owner/repo`), `GH_APP_ID`/`GH_APP_PRIVATE_KEY`/`GH_APP_INSTALLATION_ID` (GitHub App
 credentials — see below), `CLAUDE_CODE_OAUTH_TOKEN` / `ANTHROPIC_API_KEY` (at least one
 required, the OAuth token wins — see `agent/agent-auth.ts`), `DRY_RUN`, `AGENT_MODEL`, `MAX_TURNS`,
@@ -200,9 +233,17 @@ required, the OAuth token wins — see `agent/agent-auth.ts`), `DRY_RUN`, `AGENT
   public docs summary has been wrong about message/result shapes (e.g. claiming flat
   `message.content` or a `status` field — neither exists in the installed version).
 - **Exactly one Claude credential reaches the SDK subprocess, and `CLAUDE_CODE_OAUTH_TOKEN` wins.**
-  `agent/agent-auth.ts` deletes the unused variable from the `env` passed to `query()`. Don't drop
+  `agent/agent-auth.ts` passes only the winning variable in the `env` given to `query()`. Don't drop
   the `env` option (the subprocess would inherit both, and Claude Code prefers the API key) and don't
   log either value — only `authMethod`.
+- **The agent's environment is an allowlist, never a `process.env` spread.** `agent-auth.ts`'s
+  `PASSTHROUGH_VARS` plus explicit `RunAgentOptions.env` additions are all the agent (and every
+  Bash command/hook it runs) can see. Never pass `GH_APP_*`, the unscoped installation token,
+  `SKILL_WORKFLOW_SECRETS`, or a secret not listed in a manifest's `agentEnv` into it.
+- **Skill workflow config can't be changed by the run it configures.** The manifest and
+  `agent-config.json` come from the default branch (`_skill-workflow.yml` checks it out), the flow
+  always denies `Edit`/`Write` on `.claude/agent-config.json` and `.claude/szumrak/**`, and MCP
+  `${VAR}` expansion reads declared secrets only — never the host environment.
 - **`github/git-operations.ts` uses `execFileSync` with an argument array on purpose — never
   `execSync` on an interpolated string.** `TASK` is untrusted input (in CI it comes from a GitHub
   comment body), so string interpolation into a shell command is a command-injection vector.
@@ -244,7 +285,7 @@ required, the OAuth token wins — see `agent/agent-auth.ts`), `DRY_RUN`, `AGENT
   module under test.
 - **`Mode` (`types/mode.ts`) is the single source of truth for the `MODE` value — never compare
   `env.MODE` against a raw string literal.** `platform/env.ts`'s Zod schema, `index.ts`'s dispatch,
-  and `flows/registry.ts` all read/compare through `Mode.RUNNER`/`Mode.REVIEW_FOLLOWUP`. Adding a
+  and `flows/registry.ts` all read/compare through `Mode.RUNNER`/`Mode.SKILL_WORKFLOW`/etc. Adding a
   flow means adding a value to `Mode` and a matching `flowRegistry` entry — the registry's
   `Record<Mode, ...>` typing turns a missed entry into a compile error instead of a silent runtime
   no-op.
