@@ -1,7 +1,44 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { McpServerConfig } from "@anthropic-ai/claude-agent-sdk";
-import { MCP_JSON_REFERENCE, SkillWorkflowConfigError, type SkillWorkflowManifest } from "./manifest";
+import { z } from "zod";
+import { TargetRepoPath } from "~/platform/target-repo-layout";
+import { SkillWorkflowConfigError } from "./errors";
+
+/** Value of a `mcpServers` entry that takes the server's definition from the target repo's `.mcp.json`. */
+const MCP_JSON_REFERENCE = TargetRepoPath.MCP_JSON;
+
+const McpTransport = {
+  STDIO: "stdio",
+  HTTP: "http",
+  SSE: "sse"
+} as const;
+
+const StringMap = z.record(z.string(), z.string());
+
+/**
+ * An MCP server defined inline in the manifest, for repos without a `.mcp.json`
+ * (or when the workflow needs a server developers don't use interactively).
+ * The same shapes as `.mcp.json` entries — process (stdio) or remote (http/sse)
+ * servers; `${VAR}` in any string is expanded from declared secrets only.
+ */
+const InlineMcpServerSchema = z.union([
+  z.strictObject({
+    type: z.literal(McpTransport.STDIO).optional(),
+    command: z.string().min(1),
+    args: z.array(z.string()).optional(),
+    env: StringMap.optional()
+  }),
+  z.strictObject({
+    type: z.enum([McpTransport.HTTP, McpTransport.SSE]),
+    url: z.string().min(1),
+    headers: StringMap.optional()
+  })
+]);
+
+/** One entry of a manifest's `mcpServers`: an inline definition or a reference to `.mcp.json`. */
+export const McpServerEntrySchema = z.union([z.literal(MCP_JSON_REFERENCE), InlineMcpServerSchema]);
+type McpServerEntry = z.infer<typeof McpServerEntrySchema>;
 
 /** `${VAR}` or `${VAR:-default}`, the same expansion syntax Claude Code supports in `.mcp.json`. */
 const VARIABLE_PATTERN = /\$\{([A-Za-z_][A-Za-z0-9_]*)(?::-([^}]*))?\}/g;
@@ -43,7 +80,7 @@ function isServerConfig(value: unknown): value is McpServerConfig {
 }
 
 function loadMcpJsonServers(workspacePath: string, referenced: Array<string>): Record<string, unknown> {
-  const mcpPath = join(workspacePath, ".mcp.json");
+  const mcpPath = join(workspacePath, TargetRepoPath.MCP_JSON);
   if (!existsSync(mcpPath)) {
     throw new SkillWorkflowConfigError(
       `MCP servers ${referenced.join(", ")} are taken from .mcp.json, but the file is missing — define them inline in the manifest instead`
@@ -75,7 +112,7 @@ function loadMcpJsonServers(workspacePath: string, referenced: Array<string>): R
  */
 export function resolveMcpServers(
   workspacePath: string,
-  definitions: SkillWorkflowManifest["mcpServers"],
+  definitions: Record<string, McpServerEntry>,
   secrets: Record<string, string>
 ): Record<string, McpServerConfig> {
   const referenced = Object.keys(definitions).filter((name) => definitions[name] === MCP_JSON_REFERENCE);

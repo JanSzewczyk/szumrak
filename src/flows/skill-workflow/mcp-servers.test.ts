@@ -1,7 +1,7 @@
 // biome-ignore-all lint/suspicious/noTemplateCurlyInString: literal `${VAR}` is the .mcp.json expansion syntax under test
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { SkillWorkflowConfigError } from "~/flows/skill-workflow/manifest";
+import { SkillWorkflowConfigError } from "~/flows/skill-workflow/errors";
 import { resolveMcpServers } from "~/flows/skill-workflow/mcp-servers";
 
 vi.mock("node:fs", () => ({

@@ -111,8 +111,10 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   workflow (see above), never through `szumrak-worker.yml`.
 - **`Mode.SKILL_WORKFLOW`** (`MODE=skill-workflow`) — `flows/skill-workflow/run-skill-workflow-flow.ts`:
   runs a skill that lives in the target repo end to end, driven by the target repo's manifest
-  `.claude/szumrak/skill-workflows/<SKILL_WORKFLOW>.json` (`flows/skill-workflow/manifest.ts`, strict
-  Zod schema). The *whole process* belongs to the target repo's skill — including whether it
+  `.claude/szumrak/skill-workflows/<SKILL_WORKFLOW>.json` (loaded by `flows/skill-workflow/manifest.ts`
+  against the strict Zod schema in `manifest-schema.ts`, which composes the input and MCP entry
+  schemas owned by `inputs.ts` / `mcp-servers.ts`; `{{inputs.x}}` args syntax lives in
+  `skill-args.ts`, the flow's `SkillWorkflowConfigError`/`SkillWorkflowSetupError` in `errors.ts`). The *whole process* belongs to the target repo's skill — including whether it
   branches, commits, opens a PR or produces nothing outside the session. Szumrak is purely the
   orchestrator: it never commits, opens/labels PRs, runs `verify` or dedups in this flow, and the
   flow has no relation to review-followup. It prepares the environment the manifest declares and
@@ -206,6 +208,12 @@ WORKSPACE_PATH=/path/to/target-repo TASK="..." DRY_RUN=true ANTHROPIC_API_KEY=sk
   parse `process.env` at import time (`emptyStringAsUndefined: true` so Docker/CI empty vars fall
   back to defaults). Invalid config prints a readable list and `process.exit(1)` before the agent
   runs, so a bad env never wastes an API turn. Import `env` from here — there is no `config.ts`.
+- **`platform/target-repo-layout.ts`** (`TargetRepoPath`, `skillFilePath`,
+  `skillWorkflowManifestPath`) is the single source of every path Szumrak reads or protects in the
+  target repo (`agent-config.json`, `settings.json`, `.claude/skills/`, `.claude/szumrak/`,
+  `.mcp.json`), always `/`-separated so the same string works in `join()`, SDK permission rules and
+  prompt text. Never hardcode those paths elsewhere: the skill-workflow deny list is built from
+  them, so a path that drifted from its loader would stop being protected without any error.
 - **`platform/logger.ts`** appends JSONL events to `<WORKSPACE_PATH>/agent-run.jsonl` (uploaded as a
   CI artifact) — see the secret-redaction invariant below.
 - **`platform/summary.ts`** (`writeStepSummary`) writes failure-only lines to `GITHUB_STEP_SUMMARY`

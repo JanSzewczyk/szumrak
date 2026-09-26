@@ -1,30 +1,20 @@
+import { SkillWorkflowConfigError } from "~/flows/skill-workflow/errors";
 import { resolveSkillWorkflowInputs, resolveSkillWorkflowSecrets } from "~/flows/skill-workflow/inputs";
-import { SkillWorkflowConfigError, type SkillWorkflowManifest } from "~/flows/skill-workflow/manifest";
 
-function manifestWith(overrides: Partial<SkillWorkflowManifest> = {}): SkillWorkflowManifest {
-  return {
-    skill: "do-ticket",
-    inputs: {
-      ticket: { required: true, pattern: "[A-Z]+-\\d+", maxLength: 20 },
-      hint: { required: false, maxLength: 10 }
-    },
-    secrets: [],
-    agentEnv: [],
-    mcpServers: {},
-    setup: [],
-    ...overrides
-  };
-}
+const INPUT_DEFINITIONS = {
+  ticket: { required: true, pattern: "[A-Z]+-\\d+", maxLength: 20 },
+  hint: { required: false, maxLength: 10 }
+};
 
 describe("resolveSkillWorkflowInputs", () => {
   test("returns declared inputs as strings", () => {
-    const inputs = resolveSkillWorkflowInputs(manifestWith(), JSON.stringify({ ticket: "PROJ-12", hint: 42 }));
+    const inputs = resolveSkillWorkflowInputs(INPUT_DEFINITIONS, JSON.stringify({ ticket: "PROJ-12", hint: 42 }));
 
     expect(inputs).toEqual({ ticket: "PROJ-12", hint: "42" });
   });
 
   test("treats an empty string as not given", () => {
-    const inputs = resolveSkillWorkflowInputs(manifestWith(), JSON.stringify({ ticket: "PROJ-12", hint: "" }));
+    const inputs = resolveSkillWorkflowInputs(INPUT_DEFINITIONS, JSON.stringify({ ticket: "PROJ-12", hint: "" }));
 
     expect(inputs).toEqual({ ticket: "PROJ-12" });
   });
@@ -36,35 +26,35 @@ describe("resolveSkillWorkflowInputs", () => {
     ["a value over maxLength", { ticket: "PROJ-1", hint: "12345678901" }, /exceeds 10 characters/],
     ["a non-scalar value", { ticket: ["PROJ-1"] }, /must be a string, number or boolean/]
   ])("rejects %s", (_, given, message) => {
-    expect(() => resolveSkillWorkflowInputs(manifestWith(), JSON.stringify(given))).toThrow(message);
+    expect(() => resolveSkillWorkflowInputs(INPUT_DEFINITIONS, JSON.stringify(given))).toThrow(message);
   });
 
   test.each([
     ["invalid JSON", "{ticket"],
     ["a JSON array", "[]"]
   ])("rejects %s", (_, raw) => {
-    expect(() => resolveSkillWorkflowInputs(manifestWith(), raw)).toThrow(SkillWorkflowConfigError);
+    expect(() => resolveSkillWorkflowInputs(INPUT_DEFINITIONS, raw)).toThrow(SkillWorkflowConfigError);
   });
 });
 
 describe("resolveSkillWorkflowSecrets", () => {
   test("returns only the declared secrets", () => {
-    const manifest = manifestWith({ secrets: ["JIRA_API_TOKEN"] });
+    const declared = ["JIRA_API_TOKEN"];
 
-    const secrets = resolveSkillWorkflowSecrets(manifest, JSON.stringify({ JIRA_API_TOKEN: "t0ken", OTHER: "x" }));
+    const secrets = resolveSkillWorkflowSecrets(declared, JSON.stringify({ JIRA_API_TOKEN: "t0ken", OTHER: "x" }));
 
     expect(secrets).toEqual({ JIRA_API_TOKEN: "t0ken" });
   });
 
   test("names missing or empty secrets without leaking any value", () => {
-    const manifest = manifestWith({ secrets: ["JIRA_API_TOKEN", "JIRA_EMAIL"] });
+    const declared = ["JIRA_API_TOKEN", "JIRA_EMAIL"];
 
-    expect(() => resolveSkillWorkflowSecrets(manifest, JSON.stringify({ JIRA_API_TOKEN: "" }))).toThrow(
+    expect(() => resolveSkillWorkflowSecrets(declared, JSON.stringify({ JIRA_API_TOKEN: "" }))).toThrow(
       /JIRA_API_TOKEN, JIRA_EMAIL/
     );
   });
 
   test("accepts an unset secrets variable when nothing is declared", () => {
-    expect(resolveSkillWorkflowSecrets(manifestWith(), undefined)).toEqual({});
+    expect(resolveSkillWorkflowSecrets([], undefined)).toEqual({});
   });
 });
