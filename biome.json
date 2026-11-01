@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.4/schema.json",
   "root": true,
   "vcs": {
     "clientKind": "git",
@@ -8,7 +8,7 @@
   },
   "files": {
     "ignoreUnknown": true,
-    "includes": ["**", "!**/node_modules", "!**/dist"]
+    "includes": ["**", "!**/node_modules", "!**/dist", "!**/*.md", "!**/*.yml", "!**/*.yaml"]
   },
   "assist": {
     "enabled": true,
